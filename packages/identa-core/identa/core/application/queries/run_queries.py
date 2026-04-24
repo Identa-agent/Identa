@@ -1,0 +1,20 @@
+from typing import Optional, List
+from pydantic import BaseModel
+from identa.core.domain.models import Run
+from identa.core.ports.storage import StoragePort
+
+class GetRunQuery(BaseModel):
+    run_id: str
+
+class ListRunsQuery(BaseModel):
+    workspace_id: str
+
+class RunQueryHandler:
+    def __init__(self, storage: StoragePort):
+        self.storage = storage
+
+    def handle_get_run(self, query: GetRunQuery) -> Optional[Run]:
+        return self.storage.get_run(query.run_id)
+
+    def handle_list_runs(self, query: ListRunsQuery) -> List[Run]:
+        return self.storage.list_runs(query.workspace_id)
