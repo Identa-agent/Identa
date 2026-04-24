@@ -1,0 +1,152 @@
+import json
+from typing import List, Optional
+from datetime import datetime
+from sqlalchemy import create_engine, Column, String, DateTime, Text, ForeignKey, Table
+from sqlalchemy.orm import sessionmaker, declarative_base
+from identa.core.domain.models import Workspace, Run, Baseline
+from identa.core.ports.storage import StoragePort
+
+Base = declarative_base()
+
+class WorkspaceModel(Base):
+    __tablename__ = "workspaces"
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    backend_uri = Column(String, nullable=False)
+
+class RunModel(Base):
+    __tablename__ = "runs"
+    id = Column(String, primary_key=True)
+    workspace_id = Column(String, ForeignKey("workspaces.id"), nullable=False)
+    name = Column(String, nullable=False)
+    parent_run_id = Column(String, nullable=True)
+    params = Column(Text, nullable=False) # JSON
+    tags = Column(Text, nullable=False)   # JSON
+    status = Column(String, nullable=False)
+    started_at = Column(DateTime, nullable=False)
+    ended_at = Column(DateTime, nullable=True)
+    evaluation_mode = Column(String, nullable=False)
+    reproducibility_bundle_id = Column(String, nullable=True)
+    artifact_ids = Column(Text, nullable=False) # JSON list
+
+class BaselineModel(Base):
+    __tablename__ = "baselines"
+    name = Column(String, primary_key=True)
+    workspace_id = Column(String, ForeignKey("workspaces.id"), primary_key=True)
+    run_id = Column(String, ForeignKey("runs.id"), nullable=False)
+    registered_at = Column(DateTime, nullable=False)
+
+class SQLiteStorageAdapter(StoragePort):
+    def __init__(self, database_url: str):
+        self.engine = create_engine(database_url)
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine)
+
+    def save_workspace(self, workspace: Workspace) -> None:
+        with self.Session() as session:
+            model = WorkspaceModel(
+                id=workspace.id,
+                name=workspace.name,
+                backend_uri=workspace.backend_uri
+            )
+            session.merge(model)
+            session.commit()
+
+    def get_workspace(self, workspace_id: str) -> Optional[Workspace]:
+        with self.Session() as session:
+            model = session.query(WorkspaceModel).filter_by(id=workspace_id).first()
+            if model:
+                return Workspace(id=model.id, name=model.name, backend_uri=model.backend_uri)
+            return None
+
+    def list_workspaces(self) -> List[Workspace]:
+        with self.Session() as session:
+            models = session.query(WorkspaceModel).all()
+            return [Workspace(id=m.id, name=m.name, backend_uri=m.backend_uri) for m in models]
+
+    def save_run(self, run: Run) -> None:
+        with self.Session() as session:
+            model = RunModel(
+                id=run.id,
+                workspace_id=run.workspace_id,
+                name=run.name,
+                parent_run_id=run.parent_run_id,
+                params=json.dumps(run.params),
+                tags=json.dumps(run.tags),
+                status=run.status,
+                started_at=run.started_at,
+                ended_at=run.ended_at,
+                evaluation_mode=run.evaluation_mode,
+                reproducibility_bundle_id=run.reproducibility_bundle_id,
+                artifact_ids=json.dumps(run.artifact_ids)
+            )
+            session.merge(model)
+            session.commit()
+
+    def get_run(self, run_id: str) -> Optional[Run]:
+        with self.Session() as session:
+            model = session.query(RunModel).filter_by(id=run_id).first()
+            if model:
+                return Run(
+                    id=model.id,
+                    workspace_id=model.workspace_id,
+                    name=model.name,
+                    parent_run_id=model.parent_run_id,
+                    params=json.loads(model.params),
+                    tags=json.loads(model.tags),
+                    status=model.status,
+                    started_at=model.started_at,
+                    ended_at=model.ended_at,
+                    evaluation_mode=model.evaluation_mode,
+                    reproducibility_bundle_id=model.reproducibility_bundle_id,
+                    artifact_ids=json.loads(model.artifact_ids)
+                )
+            return None
+
+    def list_runs(self, workspace_id: str) -> List[Run]:
+        with self.Session() as session:
+            models = session.query(RunModel).filter_by(workspace_id=workspace_id).all()
+            return [
+                Run(
+                    id=m.id,
+                    workspace_id=m.workspace_id,
+                    name=m.name,
+                    parent_run_id=m.parent_run_id,
+                    params=json.loads(m.params),
+                    tags=json.loads(m.tags),
+                    status=m.status,
+                    started_at=m.started_at,
+                    ended_at=m.ended_at,
+                    evaluation_mode=m.evaluation_mode,
+                    reproducibility_bundle_id=m.reproducibility_bundle_id,
+                    artifact_ids=json.loads(m.artifact_ids)
+                ) for m in models
+            ]
+
+    def save_baseline(self, baseline: Baseline) -> None:
+        # Note: Baseline model in models.py doesn't have workspace_id, but it's needed for the table
+        # I'll need to retrieve the run to get the workspace_id or change the model
+        with self.Session() as session:
+            run = session.query(RunModel).filter_by(id=baseline.run_id).first()
+            if not run:
+                raise ValueError(f"Run {baseline.run_id} not found")
+            
+            model = BaselineModel(
+                name=baseline.name,
+                workspace_id=run.workspace_id,
+                run_id=baseline.run_id,
+                registered_at=baseline.registered_at
+            )
+            session.merge(model)
+            session.commit()
+
+    def get_baseline(self, workspace_id: str, name: str) -> Optional[Baseline]:
+        with self.Session() as session:
+            model = session.query(BaselineModel).filter_by(workspace_id=workspace_id, name=name).first()
+            if model:
+                return Baseline(
+                    name=model.name,
+                    run_id=model.run_id,
+                    registered_at=model.registered_at
+                )
+            return None
