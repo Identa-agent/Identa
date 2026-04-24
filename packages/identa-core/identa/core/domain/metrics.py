@@ -9,6 +9,8 @@ class Metric(ABC):
 
 class ExactMatchMetric(Metric):
     def compute(self, test_input: Any, output: Any, expected: Any, trace: Optional[TraceArtifact] = None) -> float:
+        if output == expected:
+            return 1.0
         return 1.0 if str(output).strip() == str(expected).strip() else 0.0
 
 class LatencyMetric(Metric):

@@ -65,6 +65,6 @@ def start_run(name: str) -> RunContext:
 def evaluate(agent: Any, suite: List[Dict[str, Any]], **kwargs):
     if not _client:
         raise ValueError("Call set_workspace first")
-    # In a real SDK, we'd detect the current run from a context var
-    # For now, we'll assume a run is managed by the user or passed in
-    return _client.evaluate(agent, suite, run_id="standalone", **kwargs)
+    
+    run_id = kwargs.pop("run_id", "standalone")
+    return _client.evaluate(agent, suite, run_id=run_id, **kwargs)

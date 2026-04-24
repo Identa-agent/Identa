@@ -1,14 +1,14 @@
 import hashlib
 import json
 from typing import Dict, Any, List, Optional
-from langgraph.graph import CompiledGraph
+# from langgraph.graph import CompiledGraph
 from identa.core.domain.structure import AgentStructure, AgentNode, AgentEdge
 from identa.core.domain.tracing_service import TracingService
 from identa.core.domain.tracing import SpanMetadata
 
 class LangGraphAdapter:
     @staticmethod
-    def inspect(graph: CompiledGraph) -> AgentStructure:
+    def inspect(graph: Any) -> AgentStructure:
         nodes = []
         edges = []
         
@@ -41,7 +41,7 @@ class LangGraphAdapter:
         )
 
     @staticmethod
-    def wrap_for_tracing(graph: CompiledGraph):
+    def wrap_for_tracing(graph: Any):
         # In a real implementation, we would use LangGraph's callback system
         # or monkeypatch the invoke/stream methods.
         original_invoke = graph.invoke
