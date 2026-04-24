@@ -1,0 +1,10 @@
+[project]
+name = "identa"
+version = "0.1.0"
+description = "Identa - Agent Evaluation & Migration Substrate"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.uv]
+workspace = { members = ["packages/*"] }
