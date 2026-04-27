@@ -1,6 +1,6 @@
 # Identa SDK 🚀
 
-The user-facing toolkit for evaluating and migrating LLM-based agents. Identa provides framework shims for **LangGraph** and **PydanticAI** to enable multi-resolution tracing and performance tracking.
+The user-facing toolkit for evaluating and migrating LLM-based agents. Identa provides a zero-friction experience for **LangGraph**, **PydanticAI**, and **LangChain** agents.
 
 ## Getting Started
 
@@ -10,48 +10,43 @@ The user-facing toolkit for evaluating and migrating LLM-based agents. Identa pr
 pip install identa-sdk
 ```
 
-### 2. Basic Evaluation (LangGraph)
+### 2. Basic Evaluation
+
+Identa automatically detects your agent's framework. You don't need to import framework-specific adapters.
 
 ```python
-from identa.sdk import api
-from identa.sdk.adapters.langgraph_adapter import LangGraphAdapter
+import identa
 
-# Set your workspace
-api.set_workspace("travel_agent")
+# 1. Initialize your workspace
+identa.set_workspace("travel_agent")
 
-# Inspect your graph structure
-structure = LangGraphAdapter.inspect(my_graph)
-
-# Wrap for tracing
-wrapped_agent = LangGraphAdapter.wrap_for_tracing(my_graph)
-
-# Define a test suite
+# 2. Define a test suite
 suite = [
     {"input": {"query": "Fly to Paris"}, "expected": {"destination": "CDG"}}
 ]
 
-# Run evaluation
-with api.start_run("gpt-4-baseline") as run:
-    results = api.evaluate(
-        agent=wrapped_agent.invoke,
+# 3. Run evaluation directly on your agent object
+with identa.start_run("gpt-4-baseline") as run:
+    results = identa.evaluate(
+        agent=my_agent,   # Works with LangGraph, PydanticAI, etc.
         suite=suite,
         metrics=["exact_match", "latency"],
-        resolution="node",
-        structure=structure
+        resolution="node", # Optional: auto-inspects for node-level attribution
     )
 
-print(f"Success Rate: {results.aggregates[0].value}")
+print(results.summary())
 ```
 
 ### 3. Usage with PydanticAI
 
 ```python
-from identa.sdk.adapters.pydantic_ai_adapter import PydanticAIAdapter
+from pydantic_ai import Agent
+import identa
 
-wrapped_agent = PydanticAIAdapter.wrap_for_tracing(my_agent)
+agent = Agent("openai:gpt-4o")
 
-# Evaluate similarly
-api.evaluate(agent=wrapped_agent.run, suite=suite)
+# No manual wrapping required!
+identa.evaluate(agent=agent, suite=suite)
 ```
 
 ## CLI
@@ -68,9 +63,9 @@ identa runs show <run_id>
 
 ## Framework Support
 
-| Feature | LangGraph | PydanticAI |
-| :--- | :--- | :--- |
-| **Boundary Eval** | ✅ | ✅ |
-| **Node Tracing** | ✅ | ✅ |
-| **Structural Inspection** | ✅ | 🚧 |
-| **Model Migration** | ✅ | 🚧 |
+| Feature | LangGraph | PydanticAI | LangChain |
+| :--- | :--- | :--- | :--- |
+| **Boundary Eval** | ✅ | ✅ | ✅ |
+| **Node Tracing** | ✅ | ✅ | ✅ |
+| **Structural Inspection** | ✅ | ✅ | 🚧 |
+| **Model Migration** | ✅ | 🚧 | 🚧 |

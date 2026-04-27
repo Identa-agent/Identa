@@ -1,6 +1,6 @@
 # Identa 🧠
 
-Identa is an MLflow-shaped evaluation and migration substrate for notebook-driven agent experimentation. It provides framework shims for **LangGraph**, **PydanticAI**, and **LangChain** to enable multi-resolution performance tracking, structural drift detection, and automated model-binding migrations.
+Identa is an MLflow-shaped evaluation and migration substrate for notebook-driven agent experimentation. It provides a zero-friction experience for **LangGraph**, **PydanticAI**, and **LangChain** agents with multi-resolution performance tracking, structural drift detection, and automated model-binding migrations.
 
 ## The Alignment Triangle 📐
 
@@ -36,23 +36,17 @@ uv sync
 ### 3. Run Your First Evaluation
 
 ```python
-from identa.sdk import api
-from identa.sdk.adapters.langgraph_adapter import LangGraphAdapter
+import identa
 
 # 1. Initialize workspace
-api.set_workspace("my_experiment", db_url="sqlite:///identa.db")
+identa.set_workspace("my_experiment", db_url="sqlite:///identa.db")
 
-# 2. Wrap your agent (e.g., a LangGraph graph)
-wrapped_agent = LangGraphAdapter.wrap_for_tracing(my_graph)
-structure = LangGraphAdapter.inspect(my_graph)
-
-# 3. Evaluate
-with api.start_run("gpt-4-baseline"):
-    results = api.evaluate(
-        agent=wrapped_agent.invoke,
+# 2. Evaluate (framework auto-detection handles the rest)
+with identa.start_run("gpt-4-baseline"):
+    results = identa.evaluate(
+        agent=my_agent,   # Pass your LangGraph or PydanticAI object directly
         suite=[{"input": {"q": "hi"}, "expected": "hello"}],
-        resolution="node",
-        structure=structure
+        resolution="node"
     )
 ```
 
