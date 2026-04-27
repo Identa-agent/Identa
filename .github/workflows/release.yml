@@ -12,6 +12,8 @@ jobs:
     permissions:
       # This permission is required for Trusted Publishing
       id-token: write
+      # This is required for actions/checkout
+      contents: read
     
     steps:
     - uses: actions/checkout@v4
