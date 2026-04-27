@@ -35,8 +35,38 @@ env/
 # Database
 *.db
 *.sqlite
+*.sqlite3
+*.db-journal
+*.db-shm
+*.db-wal
 
-# IDEs
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# IDEs & System
 .vscode/
 .idea/
 .DS_Store
+.AppleDouble
+.LSOverride
+Icon
+Network Trash Folder
+Temporary Items
+.apdisk
