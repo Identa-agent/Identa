@@ -1,7 +1,9 @@
 # packages/identa-sdk/identa/sdk/registry.py
 from dataclasses import dataclass
-from typing import Any, Callable, Type
-from identa.sdk.adapters.base import BaseAdapter
+from typing import Any, Callable, Type, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from identa.sdk.adapters.base import BaseAdapter
 
 class UnsupportedFrameworkError(TypeError):
     """Raised when no adapter matches the supplied agent object."""
@@ -9,18 +11,18 @@ class UnsupportedFrameworkError(TypeError):
 @dataclass
 class AdapterEntry:
     matcher: Callable[[Any], bool]
-    adapter_cls: Type[BaseAdapter]
+    adapter_cls: Type['BaseAdapter']
     name: str
 
 class AgentRegistry:
     _entries: list[AdapterEntry] = []
 
     @classmethod
-    def register(cls, matcher: Callable[[Any], bool], adapter_cls: Type[BaseAdapter], name: str) -> None:
+    def register(cls, matcher: Callable[[Any], bool], adapter_cls: Type['BaseAdapter'], name: str) -> None:
         cls._entries.append(AdapterEntry(matcher, adapter_cls, name))
 
     @classmethod
-    def detect(cls, agent: Any) -> BaseAdapter:
+    def detect(cls, agent: Any) -> 'BaseAdapter':
         for entry in cls._entries:
             try:
                 if entry.matcher(agent):

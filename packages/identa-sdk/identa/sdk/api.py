@@ -6,6 +6,9 @@ from identa.core.domain.metrics import ExactMatchMetric, LatencyMetric
 from identa.core.persistence.sqlite_adapter import SQLiteStorageAdapter
 from identa.core.application.commands.workspace_commands import WorkspaceCommandHandler, CreateWorkspaceCommand
 from identa.core.application.commands.run_commands import RunCommandHandler, StartRunCommand
+from identa.sdk.registry import AgentRegistry
+from identa.sdk.adapters.base import WrappedAgent
+import identa.sdk.adapters  # noqa: F401  triggers registration
 
 class IdentaClient:
     def __init__(self, workspace_id: str, db_url: str = "sqlite:///identa.db"):
@@ -65,6 +68,30 @@ def start_run(name: str) -> RunContext:
 def evaluate(agent: Any, suite: List[Dict[str, Any]], **kwargs):
     if not _client:
         raise ValueError("Call set_workspace first")
-    
+
+    # If user already passed a WrappedAgent (advanced use), skip detection.
+    if isinstance(agent, WrappedAgent):
+        wrapped = agent
+        structure = kwargs.get("structure")
+    else:
+        adapter = AgentRegistry.detect(agent)
+        resolution = kwargs.get("resolution", "boundary")
+        structure = kwargs.get("structure")
+        if resolution != "boundary" and structure is None:
+            structure = adapter.inspect(agent)
+            kwargs["structure"] = structure
+        wrapped = adapter.wrap(agent)
+
     run_id = kwargs.pop("run_id", "standalone")
-    return _client.evaluate(agent, suite, run_id=run_id, **kwargs)
+    return _client.evaluate(wrapped, suite, run_id=run_id, **kwargs)
+
+def inspect(agent: Any) -> "AgentStructure":
+    """Optional: inspect an agent without running a suite."""
+    if not _client:
+         # Minimal detection doesn't technically need _client but spec says evaluate does.
+         # Actually inspect doesn't need _client based on the spec code.
+         pass
+    if isinstance(agent, WrappedAgent):
+        agent = agent.original
+    adapter = AgentRegistry.detect(agent)
+    return adapter.inspect(agent)
