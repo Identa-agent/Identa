@@ -1266,12 +1266,12 @@ wheels = [
 
 [[package]]
 name = "identa"
-version = "0.1.0"
+version = "0.4.1"
 source = { virtual = "." }
 
 [[package]]
 name = "identa-core"
-version = "0.1.0"
+version = "0.4.1"
 source = { editable = "packages/identa-core" }
 dependencies = [
     { name = "pydantic" },
@@ -1296,7 +1296,7 @@ dev = [{ name = "pytest", specifier = ">=9.0.3" }]
 
 [[package]]
 name = "identa-sdk"
-version = "0.1.0"
+version = "0.4.1"
 source = { editable = "packages/identa-sdk" }
 dependencies = [
     { name = "click" },
