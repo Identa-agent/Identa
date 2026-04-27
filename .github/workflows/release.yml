@@ -31,18 +31,17 @@ jobs:
 
     - name: Build distributions
       run: |
-        uv build --package identa-core
-        uv build --package identa-sdk
+        uv build --package identa-core --out-dir dist/core
+        uv build --package identa-sdk --out-dir dist/sdk
 
     - name: Publish identa-core to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
-        packages-dir: dist/
-        # We allow skip-existing in case we run this multiple times for different tags
+        packages-dir: dist/core/
         skip-existing: true
 
     - name: Publish identa-sdk to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
-        packages-dir: dist/
+        packages-dir: dist/sdk/
         skip-existing: true
