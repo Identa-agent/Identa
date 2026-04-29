@@ -37,9 +37,12 @@ class PydanticAIAdapter(BaseAdapter):
             try:
                 # Use run_sync for sync evaluation engine
                 if hasattr(agent, "run_sync"):
-                    return agent.run_sync(prompt).data
+                    res = agent.run_sync(prompt)
                 else:
-                    return agent.run(prompt).data
+                    res = agent.run(prompt)
+                
+                # PydanticAI >= 1.0 uses .output, older might use .data
+                return getattr(res, "output", getattr(res, "data", res))
             finally:
                 TracingService.end_span(span_id)
         return WrappedAgent(callable=traced, original=agent, framework_name=self.framework_name)
