@@ -1,6 +1,6 @@
 [project]
 name = "identa"
-version = "0.4.3"
+version = "0.4.4"
 description = "Identa - Agent Evaluation & Migration Substrate"
 readme = "README.md"
 requires-python = ">=3.10"
