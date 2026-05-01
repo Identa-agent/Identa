@@ -1,5 +1,9 @@
 # Identa 🧠
 
+[![PyPI version](https://img.shields.io/pypi/v/identa-sdk.svg)](https://pypi.org/project/identa-sdk/)
+[![PyPI - core](https://img.shields.io/pypi/v/identa-core.svg?label=pypi%20-%20core)](https://pypi.org/project/identa-core/)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 Identa is an MLflow-shaped evaluation and migration substrate for notebook-driven agent experimentation. It provides a zero-friction experience for **LangGraph**, **PydanticAI**, and **LangChain** agents with multi-resolution performance tracking, structural drift detection, and automated model-binding migrations.
 
 ## The Alignment Triangle 📐
@@ -18,22 +22,32 @@ This is a monorepo managed by [uv](https://docs.astral.sh/uv/).
 - **`packages/identa-sdk`**: The user-facing SDK and CLI. Includes adapters for LangGraph and PydanticAI.
 - **`tests/`**: End-to-end integration tests for all supported frameworks and evaluation modes.
 
-## Quick Start
+## Installation
 
-### 1. Requirements
+### From PyPI (Recommended)
 
-- Python 3.10+
-- [uv](https://docs.astral.sh/uv/)
-
-### 2. Installation
-
-Clone the repository and sync the workspace:
+To install the user-facing SDK:
 
 ```bash
-uv sync
+pip install identa-sdk
 ```
 
-### 3. Run Your First Evaluation
+### From Source (Development)
+
+1. **Requirements**
+   - Python 3.10+
+   - [uv](https://docs.astral.sh/uv/)
+
+2. **Clone and Sync**
+   ```bash
+   git clone https://github.com/identa-ai/identa.git
+   cd identa
+   uv sync
+   ```
+
+## Quick Start
+
+### 1. Run Your First Evaluation
 
 ```python
 import identa
@@ -56,10 +70,36 @@ The Identa CLI allows you to inspect runs and compare baselines:
 
 ```bash
 # List all runs
-uv run identa runs list --workspace travel_agent
+identa runs list --workspace travel_agent
 
 # Inspect a specific run
-uv run identa runs show <run_id>
+identa runs show <run_id>
+```
+
+## Build & Development
+
+Identa uses `hatchling` as the build backend and `uv` for workspace management.
+
+### Building Packages Locally
+
+To build the wheel and sdist for each package:
+
+```bash
+# Build identa-core
+uv build --package identa-core
+
+# Build identa-sdk
+uv build --package identa-sdk
+```
+
+The distributions will be located in the `dist/` directory.
+
+### Running Tests
+
+Run the full E2E suite:
+
+```bash
+uv run pytest tests/
 ```
 
 ## Architecture Summary
@@ -70,14 +110,6 @@ Identa follows a **Hexagonal Architecture** with **CQRS** enforced via package s
 - **Queries**: Materialize history and comparisons (e.g., `CompareRuns`).
 - **Ports**: Abstract storage (SQLite, Postgres) and artifact stores (FS, S3).
 
-## Testing
-
-Run the full E2E suite:
-
-```bash
-uv run pytest tests/
-```
-
 ## License
 
-MIT
+Apache-2.0
