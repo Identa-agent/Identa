@@ -6,44 +6,108 @@ on:
       - 'v*'
 
 jobs:
-  build-n-publish:
-    name: Build and publish Python 🐍 distributions 📦 to PyPI
+  # ==========================================
+  # PHASE 1: IDENTA-CORE
+  # ==========================================
+  build-core:
+    name: Build identa-core 🐍
     runs-on: ubuntu-latest
-    permissions:
-      # This permission is required for Trusted Publishing
-      id-token: write
-      # This is required for actions/checkout
-      contents: read
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-    
     steps:
-    - uses: actions/checkout@v6
-    
-    - name: Install uv
-      uses: astral-sh/setup-uv@v8
-      with:
-        enable-cache: true
-        version: "latest"
+      - uses: actions/checkout@v4
+      
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
+          
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          
+      - name: Build identa-core
+        run: uv build --package identa-core --out-dir dist/core
 
-    - name: Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: "3.10"
+      - name: Store identa-core artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-dist
+          path: dist/core/
+          include-hidden-files: true
 
-    - name: Build distributions
-      run: |
-        uv build --package identa-core --out-dir dist/core
-        uv build --package identa-sdk --out-dir dist/sdk
+  publish-core:
+    name: Publish identa-core to PyPI 📦
+    needs: build-core
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi-core
+      url: https://pypi.org/project/identa-core/
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: core-dist
+          path: dist/core/
+          
+      - name: Publish identa-core
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/core/
+          skip-existing: true
 
-    - name: Publish identa-core to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        packages-dir: dist/core/
-        skip-existing: true
+  # ==========================================
+  # PHASE 2: IDENTA-SDK
+  # ==========================================
+  build-sdk:
+    name: Build identa-sdk 🐍
+    needs: publish-core  # <--- CRITICAL: This forces GitHub to wait until Core is live on PyPI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
+          
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
 
-    - name: Publish identa-sdk to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        packages-dir: dist/sdk/
-        skip-existing: true
+      # Optional but highly recommended: Give PyPI's global index a moment to update 
+      # so `uv` doesn't throw a "package not found" error if it runs immediately.
+      - name: Wait for PyPI Index Propagation
+        run: sleep 30
+          
+      - name: Build identa-sdk
+        run: uv build --package identa-sdk --out-dir dist/sdk
+
+      - name: Store identa-sdk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-dist
+          path: dist/sdk/
+          include-hidden-files: true
+
+  publish-sdk:
+    name: Publish identa-sdk to PyPI 📦
+    needs: build-sdk
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi-sdk
+      url: https://pypi.org/project/identa-sdk/
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-dist
+          path: dist/sdk/
+          
+      - name: Publish identa-sdk
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/sdk/
+          skip-existing: true

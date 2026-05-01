@@ -1,7 +1,10 @@
 # Identa 🧠
 
-[![PyPI version](https://img.shields.io/pypi/v/identa-sdk.svg)](https://pypi.org/project/identa-sdk/)
-[![PyPI - core](https://img.shields.io/pypi/v/identa-core.svg?label=pypi%20-%20core)](https://pypi.org/project/identa-core/)
+| Package | Version | Status |
+| :--- | :--- | :--- |
+| **identa-sdk** | [![PyPI version](https://img.shields.io/pypi/v/identa-sdk.svg)](https://pypi.org/project/identa-sdk/) | [![Release](https://github.com/identa-ai/identa/actions/workflows/release.yml/badge.svg)](https://github.com/identa-ai/identa/actions/workflows/release.yml) |
+| **identa-core** | [![PyPI - core](https://img.shields.io/pypi/v/identa-core.svg?label=pypi%20-%20core)](https://pypi.org/project/identa-core/) | [![Release](https://github.com/identa-ai/identa/actions/workflows/release.yml/badge.svg)](https://github.com/identa-ai/identa/actions/workflows/release.yml) |
+
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 Identa is an MLflow-shaped evaluation and migration substrate for notebook-driven agent experimentation. It provides a zero-friction experience for **LangGraph**, **PydanticAI**, and **LangChain** agents with multi-resolution performance tracking, structural drift detection, and automated model-binding migrations.
