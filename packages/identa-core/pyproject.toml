@@ -1,6 +1,6 @@
 [project]
 name = "identa-core"
-version = "0.4.2"
+version = "0.4.5"
 description = "Core domain and application logic for Identa"
 readme = "README.md"
 license = "Apache-2.0"
