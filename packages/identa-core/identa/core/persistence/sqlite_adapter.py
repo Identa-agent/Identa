@@ -1,9 +1,10 @@
 import json
 from typing import List, Optional
 from datetime import datetime
-from sqlalchemy import create_engine, Column, String, DateTime, Text, ForeignKey, Table
+from sqlalchemy import create_engine, Column, String, DateTime, Text, ForeignKey
 from sqlalchemy.orm import sessionmaker, declarative_base
 from identa.core.domain.models import Workspace, Run, Baseline
+from identa.core.domain.results import EvaluationResult
 from identa.core.ports.storage import StoragePort
 
 Base = declarative_base()
@@ -35,6 +36,16 @@ class BaselineModel(Base):
     workspace_id = Column(String, ForeignKey("workspaces.id"), primary_key=True)
     run_id = Column(String, ForeignKey("runs.id"), nullable=False)
     registered_at = Column(DateTime, nullable=False)
+
+
+class EvaluationResultModel(Base):
+    """Stores the full EvaluationResult as a JSON blob for simplicity."""
+    __tablename__ = "evaluation_results"
+    id = Column(String, primary_key=True)
+    run_id = Column(String, ForeignKey("runs.id"), nullable=False)
+    suite_hash = Column(String, nullable=False)
+    resolution = Column(String, nullable=False)
+    data = Column(Text, nullable=False)  # Full JSON blob of EvaluationResult
 
 class SQLiteStorageAdapter(StoragePort):
     def __init__(self, database_url: str):
@@ -150,3 +161,29 @@ class SQLiteStorageAdapter(StoragePort):
                     registered_at=model.registered_at
                 )
             return None
+
+    # ── EvaluationResult persistence ───────────────────────────────────────────
+
+    def save_evaluation_result(self, result: EvaluationResult) -> None:
+        with self.Session() as session:
+            model = EvaluationResultModel(
+                id=result.id,
+                run_id=result.run_id,
+                suite_hash=result.suite_hash,
+                resolution=result.resolution,
+                data=result.model_dump_json(),
+            )
+            session.merge(model)
+            session.commit()
+
+    def get_evaluation_result(self, result_id: str) -> Optional[EvaluationResult]:
+        with self.Session() as session:
+            model = session.query(EvaluationResultModel).filter_by(id=result_id).first()
+            if model:
+                return EvaluationResult.model_validate_json(model.data)
+            return None
+
+    def list_evaluation_results(self, run_id: str) -> List[EvaluationResult]:
+        with self.Session() as session:
+            models = session.query(EvaluationResultModel).filter_by(run_id=run_id).all()
+            return [EvaluationResult.model_validate_json(m.data) for m in models]

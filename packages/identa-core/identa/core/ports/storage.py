@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional
 from identa.core.domain.models import Workspace, Run, Baseline
+from identa.core.domain.results import EvaluationResult
+
 
 class StoragePort(ABC):
     @abstractmethod
@@ -33,4 +35,16 @@ class StoragePort(ABC):
 
     @abstractmethod
     def get_baseline(self, workspace_id: str, name: str) -> Optional[Baseline]:
+        pass
+
+    @abstractmethod
+    def save_evaluation_result(self, result: EvaluationResult) -> None:
+        pass
+
+    @abstractmethod
+    def get_evaluation_result(self, result_id: str) -> Optional[EvaluationResult]:
+        pass
+
+    @abstractmethod
+    def list_evaluation_results(self, run_id: str) -> List[EvaluationResult]:
         pass
