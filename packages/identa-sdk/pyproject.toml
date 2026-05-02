@@ -8,6 +8,13 @@ license = "Apache-2.0"
 dependencies = [
     "identa-core>=0.4.5",
     "click",
+]
+
+[project.optional-dependencies]
+langgraph  = ["langgraph>=1.1.9"]
+langchain  = ["langchain>=1.2.15"]
+pydantic-ai = ["pydantic-ai>=1.86.1"]
+all = [
     "langgraph>=1.1.9",
     "langchain>=1.2.15",
     "pydantic-ai>=1.86.1",
