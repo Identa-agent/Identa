@@ -47,8 +47,13 @@ def capture_environment() -> Dict[str, Any]:
         except importlib.metadata.PackageNotFoundError:
             pass
             
+    try:
+        identa_version = importlib.metadata.version("identa-core")
+    except importlib.metadata.PackageNotFoundError:
+        identa_version = "unknown"
+
     return {
         "python_version": sys.version.split()[0],
-        "identa_version": "0.4.5", # TODO: dynamic versioning
+        "identa_version": identa_version,
         "framework_versions": versions
     }
