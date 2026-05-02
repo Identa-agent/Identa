@@ -1,4 +1,22 @@
 # packages/identa-sdk/identa/sdk/__init__.py
-from identa.sdk.api import set_workspace, start_run, evaluate, inspect
+from .api import (
+    set_workspace, 
+    start_run, 
+    evaluate, 
+    inspect, 
+    load_suite, 
+    compare_to_baseline, 
+    assert_no_regressions, 
+    reproduce
+)
 
-__all__ = ["set_workspace", "start_run", "evaluate", "inspect"]
+__all__ = [
+    "set_workspace", 
+    "start_run", 
+    "evaluate", 
+    "inspect", 
+    "load_suite", 
+    "compare_to_baseline", 
+    "assert_no_regressions", 
+    "reproduce"
+]

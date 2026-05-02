@@ -1,5 +1,5 @@
 import sys
-import pkg_resources
+import importlib.metadata
 from typing import Any, Dict, Optional, List
 from identa.core.domain.models import ReproducibilityBundle
 from identa.core.domain.evaluation import EvaluationEngine
@@ -43,8 +43,8 @@ def capture_environment() -> Dict[str, Any]:
     versions = {}
     for fw in frameworks:
         try:
-            versions[fw] = pkg_resources.get_distribution(fw).version
-        except pkg_resources.DistributionNotFound:
+            versions[fw] = importlib.metadata.version(fw)
+        except importlib.metadata.PackageNotFoundError:
             pass
             
     return {
