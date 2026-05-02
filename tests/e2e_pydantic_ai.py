@@ -1,45 +1,65 @@
+"""E2E test for PydanticAI integration using the transparent adapter API.
+
+No manual adapter import, no manual wrap — the agent is passed directly
+to identa.evaluate() and the SDK handles detection + tracing internally.
+"""
 import pytest
 from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
-from identa.sdk import api
-from identa.sdk.adapters.pydantic_ai_adapter import PydanticAIAdapter
+import identa
 
-# 1. Setup a simple PydanticAI agent
+
+# ── Agent under test ─────────────────────────────────────────────────────────
+
 agent = Agent(TestModel(), output_type=str)
 
+
+# ── Tests ────────────────────────────────────────────────────────────────────
+
 def test_pydantic_ai_e2e_evaluation():
-    # 2. Configure Identa
-    api.set_workspace("e2e_pydantic_ai", db_url="sqlite:///e2e_test.db")
-    
-    # 3. Wrap
-    wrapped_agent = PydanticAIAdapter.wrap_for_tracing(agent)
-    
-    # 4. Run Evaluation
+    """Verify boundary evaluation works end-to-end with the transparent adapter."""
+    identa.set_workspace("e2e_pydantic_ai", db_url="sqlite:///e2e_test.db")
+
     suite = [
         {"id": "test_1", "input": "hello", "expected": "success"}
     ]
-    
-    # Mock the run to return "success" since TestModel might return something else
-    original_run = wrapped_agent.run
-    def mock_run(prompt, *args, **kwargs):
-        # We need to mimic PydanticAI result object if needed, 
-        # but for simplicity let's assume agent returns str
-        return "success"
-    wrapped_agent.run = mock_run
 
-    with api.start_run("pydantic_ai_baseline") as run_ctx:
-        results = api.evaluate(
-            agent=wrapped_agent.run,
+    with identa.start_run("pydantic_ai_baseline") as run_ctx:
+        results = identa.evaluate(
+            agent=agent,
             suite=suite,
-            run_id=run_ctx.run.id,
-            metrics=["exact_match", "latency"],
-            resolution="boundary"
+            metrics=["latency"],
+            resolution="boundary",
         )
-        
-    # 5. Verify Results
+        run_ctx.log_results(results)
+
     assert len(results.per_test) == 1
-    assert results.per_test[0].scores["exact_match"] == 1.0
-    assert results.aggregates[0].value == 1.0
+    # TestModel always returns something — just check latency metric was captured.
+    assert "latency" in results.per_test[0].scores
+
+
+def test_pydantic_ai_agent_not_mutated():
+    """The agent object must be returned to the user unmodified after evaluate()."""
+    original_run = agent.run
+    original_run_sync = agent.run_sync
+
+    identa.set_workspace("e2e_mutation_check", db_url="sqlite:///e2e_test.db")
+    with identa.start_run("mutation_check"):
+        identa.evaluate(agent=agent, suite=[{"input": "hi", "expected": "x"}])
+
+    assert agent.run is original_run, "agent.run was monkeypatched"
+    assert agent.run_sync is original_run_sync, "agent.run_sync was monkeypatched"
+
+
+def test_pydantic_ai_inspect_structure():
+    """Verify identa.inspect() returns a valid AgentStructure for a PydanticAI agent."""
+    structure = identa.inspect(agent)
+    assert structure is not None
+    assert len(structure.nodes) >= 1
+    assert structure.version_hash is not None
+
 
 if __name__ == "__main__":
     test_pydantic_ai_e2e_evaluation()
+    test_pydantic_ai_agent_not_mutated()
+    test_pydantic_ai_inspect_structure()
