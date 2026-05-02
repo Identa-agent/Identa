@@ -1,14 +1,16 @@
 import uuid
 from datetime import datetime, timezone
-from typing import Any, List, Optional, Union, Dict
+from typing import Any, List, Optional, Union, Dict, Callable
 from identa.core.domain.models import Workspace, Run, MetricSpec
 from identa.core.domain.evaluation import EvaluationEngine
 from identa.core.domain.metrics import ExactMatchMetric, LatencyMetric
 from identa.core.domain.results import EvaluationResult
 from identa.core.domain.comparison import ComparisonEngine, ComparisonResult
 from identa.core.domain.reproduction import ReproductionEngine, capture_environment
+from identa.core.domain.calibration import CalibrationEngine
 from identa.core.persistence.sqlite_adapter import SQLiteStorageAdapter
 from identa.core.persistence.local_artifact_adapter import LocalArtifactAdapter
+from identa.core.adapters.mlflow_exporter import MLflowExporter
 from identa.core.application.commands.workspace_commands import WorkspaceCommandHandler, CreateWorkspaceCommand
 from identa.core.application.commands.run_commands import RunCommandHandler, StartRunCommand, FinishRunCommand
 from identa.core.domain.models import ReproducibilityBundle
@@ -30,6 +32,7 @@ class IdentaClient:
         }
         self.engine = EvaluationEngine(self.metrics_registry, self.artifacts)
         self.repro_engine = ReproductionEngine(self.engine)
+        self.calib_engine = CalibrationEngine(evaluate)
         
         # Handlers
         self.workspace_handler = WorkspaceCommandHandler(self.storage)
@@ -171,3 +174,14 @@ def reproduce(run_id: str, agent: Any, suite: List[Dict[str, Any]], **kwargs):
     
     # Simple delegation to engine for now
     return evaluate(agent, suite, run_id=f"repro_{run_id}", **kwargs)
+
+def export_to_mlflow(result: EvaluationResult, tracking_uri: Optional[str] = None) -> str:
+    """Exports an evaluation result to MLflow."""
+    exporter = MLflowExporter(tracking_uri=tracking_uri)
+    return exporter.export_result(result)
+
+def calibrate(agent_factory: Callable, suite: List[Dict[str, Any]], param_grid: Dict[str, List[Any]], **kwargs) -> Dict[str, Any]:
+    """Orchestrates a calibration loop to find the best agent hyperparameters."""
+    if not _client:
+        raise ValueError("Call set_workspace first")
+    return _client.calib_engine.calibrate(agent_factory, suite, param_grid, **kwargs)

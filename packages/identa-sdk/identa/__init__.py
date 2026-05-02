@@ -8,7 +8,9 @@ from .sdk import (
     load_suite, 
     compare_to_baseline, 
     assert_no_regressions, 
-    reproduce
+    reproduce,
+    export_to_mlflow,
+    calibrate
 )
 
 __all__ = [
@@ -19,5 +21,7 @@ __all__ = [
     "load_suite", 
     "compare_to_baseline", 
     "assert_no_regressions", 
-    "reproduce"
+    "reproduce",
+    "export_to_mlflow",
+    "calibrate"
 ]
