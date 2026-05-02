@@ -8,6 +8,8 @@ from identa.core.domain.results import EvaluationResult, PerTestResult
 from identa.core.domain.structure import AgentStructure
 from identa.core.domain.tracing_service import TracingService
 from identa.core.domain.metrics import Metric
+from identa.core.ports.artifacts import ArtifactPort
+import io
 
 
 def _compute_suite_hash(suite: List[Dict[str, Any]]) -> str:
@@ -33,8 +35,9 @@ class AgentProtocol(Protocol):
         ...
 
 class EvaluationEngine:
-    def __init__(self, metrics_registry: Dict[str, Metric]):
+    def __init__(self, metrics_registry: Dict[str, Metric], artifact_port: Optional[ArtifactPort] = None):
         self.metrics_registry = metrics_registry
+        self.artifact_port = artifact_port
 
     def evaluate(
         self,
@@ -48,6 +51,7 @@ class EvaluationEngine:
     ) -> EvaluationResult:
         per_test_results = []
         aggregates = {}
+        trace_refs = []
 
         # 1. Compute stable suite identity (replaces hardcoded "TODO").
         suite_hash = _compute_suite_hash(suite)
@@ -80,6 +84,13 @@ class EvaluationEngine:
             # End Trace
             trace = TracingService.end_trace()
             
+            trace_id = None
+            if trace and self.artifact_port:
+                # Save trace as gzip JSONL
+                content = trace.to_gzip_jsonl()
+                trace_id = self.artifact_port.save_artifact(run_id, f"trace_{test_id}.jsonl.gz", io.BytesIO(content))
+                trace_refs.append(trace_id)
+            
             # Compute Metrics
             scores = {}
             for m_spec in resolved_metrics:
@@ -100,7 +111,7 @@ class EvaluationEngine:
                 expected=expected,
                 output=output,
                 scores=scores,
-                trace_ref=trace.id if trace else None
+                trace_ref=trace_id
             ))
 
         # 4. Final Aggregates
@@ -122,5 +133,6 @@ class EvaluationEngine:
             resolution=resolution,
             metric_specs=resolved_metrics,
             aggregates=final_aggregates,
-            per_test=per_test_results
+            per_test=per_test_results,
+            trace_refs=trace_refs
         )

@@ -7,6 +7,7 @@ from identa.core.domain.metrics import ExactMatchMetric, LatencyMetric
 from identa.core.domain.results import EvaluationResult
 from identa.core.domain.comparison import ComparisonEngine, ComparisonResult
 from identa.core.persistence.sqlite_adapter import SQLiteStorageAdapter
+from identa.core.persistence.local_artifact_adapter import LocalArtifactAdapter
 from identa.core.application.commands.workspace_commands import WorkspaceCommandHandler, CreateWorkspaceCommand
 from identa.core.application.commands.run_commands import RunCommandHandler, StartRunCommand, FinishRunCommand
 from identa.sdk.registry import AgentRegistry
@@ -14,8 +15,9 @@ from identa.sdk.adapters.base import WrappedAgent
 import identa.sdk.adapters  # noqa: F401  triggers registration
 
 class IdentaClient:
-    def __init__(self, workspace_id: str, db_url: str = "sqlite:///identa.db"):
+    def __init__(self, workspace_id: str, db_url: str = "sqlite:///identa.db", artifact_path: str = "artifacts"):
         self.storage = SQLiteStorageAdapter(db_url)
+        self.artifacts = LocalArtifactAdapter(artifact_path)
         self.workspace_id = workspace_id
         
         # Initialize registries
@@ -23,7 +25,7 @@ class IdentaClient:
             "exact_match": ExactMatchMetric(),
             "latency": LatencyMetric()
         }
-        self.engine = EvaluationEngine(self.metrics_registry)
+        self.engine = EvaluationEngine(self.metrics_registry, self.artifacts)
         
         # Handlers
         self.workspace_handler = WorkspaceCommandHandler(self.storage)
