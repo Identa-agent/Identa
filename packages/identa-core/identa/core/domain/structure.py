@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Literal
+from typing import Dict, List, Optional, Literal, Set
 from pydantic import BaseModel, Field
 
 class AgentNode(BaseModel):
@@ -28,3 +28,39 @@ class ObservedStructureDelta(BaseModel):
     observed_frequency: Dict[str, float]
     traced_test_count: int
     total_test_count: int
+
+    @classmethod
+    def compute(
+        cls, 
+        intended: Optional[AgentStructure], 
+        results: List[Any] # PerTestResult
+    ) -> "ObservedStructureDelta":
+        """Analyzes results to find differences between intended and observed structure."""
+        total_test_count = len(results)
+        traced_results = [r for r in results if r.trace_ref]
+        traced_test_count = len(traced_results)
+        
+        intended_node_ids = {n.id for n in intended.nodes} if intended else set()
+        
+        observed_counts: Dict[str, int] = {}
+        for res in traced_results:
+            # We assume node_ids are captured in span metadata or similar
+            # For now, we'll look at the test's output or some internal state
+            # In a real impl, we'd need to fetch the TraceArtifact and check span node_ids.
+            # But we don't want to fetch all traces here.
+            # So we rely on the fact that evaluate() could have tracked node hits.
+            
+            # Placeholder: extracting node hits from trace_ref is expensive.
+            # Let's assume the resolution was performed and we have some summary.
+            pass
+
+        # Since we don't have the full trace content here, we'll implement a skeleton
+        # that returns zero deltas for now, but with the correct structure.
+        return cls(
+            missing_nodes={},
+            unexpected_nodes={},
+            mismatched_ids=[],
+            observed_frequency={},
+            traced_test_count=traced_test_count,
+            total_test_count=total_test_count
+        )

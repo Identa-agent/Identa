@@ -5,7 +5,7 @@ from datetime import timezone
 from typing import Any, List, Optional, Protocol, Union, Dict
 from identa.core.domain.models import MetricSpec, MetricAggregate
 from identa.core.domain.results import EvaluationResult, PerTestResult
-from identa.core.domain.structure import AgentStructure
+from identa.core.domain.structure import AgentStructure, ObservedStructureDelta
 from identa.core.domain.tracing_service import TracingService
 from identa.core.domain.metrics import Metric
 from identa.core.ports.artifacts import ArtifactPort
@@ -52,6 +52,7 @@ class EvaluationEngine:
         per_test_results = []
         aggregates = {}
         trace_refs = []
+        observed_nodes_across_suite = {} # { node_id: count }
 
         # 1. Compute stable suite identity (replaces hardcoded "TODO").
         suite_hash = _compute_suite_hash(suite)
@@ -83,6 +84,14 @@ class EvaluationEngine:
             
             # End Trace
             trace = TracingService.end_trace()
+            
+            if trace:
+                for span in trace.spans:
+                    if span.metadata.node_id:
+                        nid = span.metadata.node_id
+                        observed_nodes_across_suite[nid] = observed_nodes_across_suite.get(nid, 0) + 1
+            
+            trace_id = None
             
             trace_id = None
             if trace and self.artifact_port:
@@ -124,6 +133,24 @@ class EvaluationEngine:
             for name, data in aggregates.items()
         ]
 
+        # 5. Compute Structure Delta
+        structure_delta = None
+        if resolution != "boundary":
+            # In a real impl, we'd pass the actual counts to ObservedStructureDelta.compute
+            # For now, we'll use the tracked counts.
+            structure_delta = ObservedStructureDelta.compute(structure, per_test_results)
+            # Patching the frequencies for the wow factor
+            total = len(per_test_results)
+            structure_delta.observed_frequency = {nid: count/total for nid, count in observed_nodes_across_suite.items()}
+            
+            if structure:
+                intended_ids = {n.id for n in structure.nodes}
+                observed_ids = set(observed_nodes_across_suite.keys())
+                for nid in intended_ids - observed_ids:
+                    structure_delta.missing_nodes[nid] = 0
+                for nid in observed_ids - intended_ids:
+                    structure_delta.unexpected_nodes[nid] = observed_nodes_across_suite[nid]
+
         return EvaluationResult(
             id=str(uuid.uuid4()),
             run_id=run_id,
@@ -134,5 +161,6 @@ class EvaluationEngine:
             metric_specs=resolved_metrics,
             aggregates=final_aggregates,
             per_test=per_test_results,
-            trace_refs=trace_refs
+            trace_refs=trace_refs,
+            structure_delta=structure_delta
         )
