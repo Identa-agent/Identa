@@ -1,3 +1,5 @@
+import sys
+import pkg_resources
 from typing import Any, Dict, Optional, List
 from identa.core.domain.models import ReproducibilityBundle
 from identa.core.domain.evaluation import EvaluationEngine
@@ -34,3 +36,19 @@ class ReproductionEngine:
             structure=current_structure,
             mode=bundle.evaluation_mode
         )
+
+def capture_environment() -> Dict[str, Any]:
+    """Captures the current Python environment and package versions."""
+    frameworks = ["langgraph", "langchain", "pydantic-ai", "pydantic"]
+    versions = {}
+    for fw in frameworks:
+        try:
+            versions[fw] = pkg_resources.get_distribution(fw).version
+        except pkg_resources.DistributionNotFound:
+            pass
+            
+    return {
+        "python_version": sys.version.split()[0],
+        "identa_version": "0.4.5", # TODO: dynamic versioning
+        "framework_versions": versions
+    }

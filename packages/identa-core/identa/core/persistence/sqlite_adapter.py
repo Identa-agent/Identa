@@ -1,9 +1,9 @@
 import json
 from typing import List, Optional
 from datetime import datetime
-from sqlalchemy import create_engine, Column, String, DateTime, Text, ForeignKey
+from sqlalchemy import create_engine, Column, String, DateTime, Text, ForeignKey, Integer
 from sqlalchemy.orm import sessionmaker, declarative_base
-from identa.core.domain.models import Workspace, Run, Baseline
+from identa.core.domain.models import Workspace, Run, Baseline, ReproducibilityBundle
 from identa.core.domain.results import EvaluationResult
 from identa.core.ports.storage import StoragePort
 
@@ -46,6 +46,20 @@ class EvaluationResultModel(Base):
     suite_hash = Column(String, nullable=False)
     resolution = Column(String, nullable=False)
     data = Column(Text, nullable=False)  # Full JSON blob of EvaluationResult
+
+
+class ReproducibilityBundleModel(Base):
+    __tablename__ = "reproducibility_bundles"
+    id = Column(String, primary_key=True)
+    python_version = Column(String, nullable=False)
+    identa_version = Column(String, nullable=False)
+    framework_versions = Column(Text, nullable=False) # JSON
+    provider_models = Column(Text, nullable=False)   # JSON
+    structure_hash = Column(String, nullable=True)
+    resolution = Column(String, nullable=False)
+    hashes = Column(Text, nullable=False) # JSON
+    seed = Column(Integer, nullable=True)
+    evaluation_mode = Column(String, nullable=False)
 
 class SQLiteStorageAdapter(StoragePort):
     def __init__(self, database_url: str):
@@ -187,3 +201,43 @@ class SQLiteStorageAdapter(StoragePort):
         with self.Session() as session:
             models = session.query(EvaluationResultModel).filter_by(run_id=run_id).all()
             return [EvaluationResult.model_validate_json(m.data) for m in models]
+
+    # ── ReproducibilityBundle persistence ─────────────────────────────────────
+
+    def save_reproducibility_bundle(self, bundle: ReproducibilityBundle) -> None:
+        with self.Session() as session:
+            model = ReproducibilityBundleModel(
+                id=bundle.id,
+                python_version=bundle.python_version,
+                identa_version=bundle.identa_version,
+                framework_versions=json.dumps(bundle.framework_versions),
+                provider_models=json.dumps(bundle.provider_models),
+                structure_hash=bundle.structure_hash,
+                resolution=bundle.resolution,
+                hashes=json.dumps(bundle.hashes),
+                seed=bundle.seed,
+                evaluation_mode=bundle.evaluation_mode
+            )
+            session.merge(model)
+            session.commit()
+
+    def get_reproducibility_bundle(self, bundle_id: str) -> Optional[ReproducibilityBundle]:
+        with self.Session() as session:
+            model = session.query(ReproducibilityBundleModel).filter_by(id=bundle_id).first()
+            if model:
+                # Manual ID mapping because Pydantic models might have different field names
+                # but here they match ReproducibilityBundle fields.
+                # Actually, I'll use model_validate with a dict for safety.
+                return ReproducibilityBundle(
+                    id=model.id,
+                    python_version=model.python_version,
+                    identa_version=model.identa_version,
+                    framework_versions=json.loads(model.framework_versions),
+                    provider_models=json.loads(model.provider_models),
+                    structure_hash=model.structure_hash,
+                    resolution=model.resolution,
+                    hashes=json.loads(model.hashes),
+                    seed=model.seed,
+                    evaluation_mode=model.evaluation_mode
+                )
+            return None

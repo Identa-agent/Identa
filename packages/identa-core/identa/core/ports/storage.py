@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional
-from identa.core.domain.models import Workspace, Run, Baseline
+from identa.core.domain.models import Workspace, Run, Baseline, ReproducibilityBundle
 from identa.core.domain.results import EvaluationResult
 
 
@@ -47,4 +47,14 @@ class StoragePort(ABC):
 
     @abstractmethod
     def list_evaluation_results(self, run_id: str) -> List[EvaluationResult]:
+        pass
+
+    # ── ReproducibilityBundle ────────────────────────────────────────────────
+
+    @abstractmethod
+    def save_reproducibility_bundle(self, bundle: ReproducibilityBundle) -> None:
+        pass
+
+    @abstractmethod
+    def get_reproducibility_bundle(self, bundle_id: str) -> Optional[ReproducibilityBundle]:
         pass

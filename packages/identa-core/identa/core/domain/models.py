@@ -40,6 +40,7 @@ class TraceConfig(BaseModel):
     sampling_rate: float = 1.0
 
 class ReproducibilityBundle(BaseModel):
+    id: str
     python_version: str
     identa_version: str
     framework_versions: Dict[str, str]
