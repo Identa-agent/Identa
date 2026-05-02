@@ -9,6 +9,7 @@ class PerTestResult(BaseModel):
     expected: Any = None
     output: Any
     scores: Dict[str, float]
+    node_scores: Dict[str, Dict[str, float]] = Field(default_factory=dict) # { node_id: { metric: score } }
     trace_ref: Optional[str] = None
 
 class FailureRecord(BaseModel):
@@ -85,6 +86,35 @@ class EvaluationResult(BaseModel):
             # Flatten scores
             for name, score in res.scores.items():
                 row[f"score:{name}"] = score
+            # Flatten node scores
+            for node_id, n_scores in res.node_scores.items():
+                for name, score in n_scores.items():
+                    row[f"node:{node_id}:{name}"] = score
             data.append(row)
         
         return pd.DataFrame(data)
+
+    def by_node(self) -> Dict[str, List[MetricAggregate]]:
+        """Returns aggregates grouped by node_id."""
+        node_aggs: Dict[str, Dict[str, List[float]]] = {} # { node_id: { metric: [scores] } }
+        
+        for res in self.per_test:
+            for node_id, n_scores in res.node_scores.items():
+                if node_id not in node_aggs:
+                    node_aggs[node_id] = {}
+                for m_name, score in n_scores.items():
+                    if m_name not in node_aggs[node_id]:
+                        node_aggs[node_id][m_name] = []
+                    node_aggs[node_id][m_name].append(score)
+        
+        result = {}
+        for node_id, m_data in node_aggs.items():
+            aggs = []
+            for m_name, scores in m_data.items():
+                aggs.append(MetricAggregate(
+                    metric_name=m_name,
+                    value=sum(scores) / len(scores),
+                    count=len(scores)
+                ))
+            result[node_id] = aggs
+        return result

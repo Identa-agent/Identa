@@ -114,12 +114,24 @@ class EvaluationEngine:
                     aggregates[m_spec.name]["sum"] += score
                     aggregates[m_spec.name]["count"] += 1
 
+            # Compute Node Metrics (if resolution != boundary)
+            node_scores = {}
+            if resolution != "boundary" and trace:
+                for span in trace.spans:
+                    if span.metadata.node_id:
+                        nid = span.metadata.node_id
+                        if nid not in node_scores:
+                            node_scores[nid] = {}
+                        # For now, latency is the primary node-level metric we can auto-extract
+                        node_scores[nid]["latency"] = span.timing.latency_ms
+
             per_test_results.append(PerTestResult(
                 test_id=test_id,
                 input=test_input,
                 expected=expected,
                 output=output,
                 scores=scores,
+                node_scores=node_scores,
                 trace_ref=trace_id
             ))
 
