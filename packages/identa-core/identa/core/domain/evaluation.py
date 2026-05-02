@@ -174,5 +174,6 @@ class EvaluationEngine:
             aggregates=final_aggregates,
             per_test=per_test_results,
             trace_refs=trace_refs,
-            structure_delta=structure_delta
+            structure_delta=structure_delta,
+            artifact_port=self.artifact_port
         )

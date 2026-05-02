@@ -1,7 +1,9 @@
 from typing import Dict, List, Optional, Literal, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from .models import MetricSpec, MetricAggregate
 from .structure import ObservedStructureDelta
+from .tracing import TraceArtifact
+from identa.core.ports.artifacts import ArtifactPort
 
 class PerTestResult(BaseModel):
     test_id: str
@@ -32,6 +34,11 @@ class EvaluationResult(BaseModel):
     per_test: List[PerTestResult]
     trace_refs: List[str] = Field(default_factory=list)
     structure_delta: Optional[ObservedStructureDelta] = None
+    
+    # Optional port for lazy fetching of traces
+    artifact_port: Optional[ArtifactPort] = Field(default=None, exclude=True)
+    
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def summary(self) -> str:
         """Returns a human-readable summary of the evaluation results."""
@@ -118,3 +125,39 @@ class EvaluationResult(BaseModel):
                 ))
             result[node_id] = aggs
         return result
+
+    def slice(self, test_id: str) -> Optional[PerTestResult]:
+        """Returns the result for a specific test_id."""
+        for res in self.per_test:
+            if res.test_id == test_id:
+                return res
+        return None
+
+    def trace(self, test_id: str) -> Optional[TraceArtifact]:
+        """Retrieves the TraceArtifact for a specific test_id."""
+        res = self.slice(test_id)
+        if not res or not res.trace_ref:
+            return None
+        
+        if not self.artifact_port:
+            raise ValueError("artifact_port not configured on this result. Cannot fetch trace.")
+            
+        content = self.artifact_port.get_artifact(res.trace_ref)
+        if not content:
+            return None
+            
+        import gzip
+        import io
+        # Reconstruct TraceArtifact from gzip JSONL
+        # Note: This is a simplified reconstruction.
+        with gzip.GzipFile(fileobj=content, mode='rb') as f:
+            spans = []
+            from .tracing import Span
+            for line in f:
+                spans.append(Span.model_validate_json(line))
+        
+        return TraceArtifact(
+            id=res.trace_ref,
+            structure_hash=self.structure_hash or "none",
+            spans=spans
+        )
