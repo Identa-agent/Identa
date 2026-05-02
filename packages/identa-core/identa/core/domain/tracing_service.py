@@ -2,7 +2,7 @@ import contextvars
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional, Any, Dict
-from identa.core.domain.tracing import Span, SpanMetadata, SpanTiming, TraceArtifact
+from identa.core.domain.tracing import Span, SpanMetadata, SpanTiming, TraceArtifact, MediaContent
 
 # No default=[] — using a sentinel avoids sharing a single list across all contexts.
 _active_spans: contextvars.ContextVar[List[Span]] = contextvars.ContextVar("_active_spans")
@@ -61,3 +61,18 @@ class TracingService:
         trace = _current_trace.get()
         if trace:
             trace.spans.append(updated_span)
+
+    @staticmethod
+    def log_media(media_item: MediaContent):
+        """Attaches media content to the currently active span."""
+        active = _active_spans.get([])
+        if not active:
+            return
+        
+        # Update the top span in the active stack
+        span = active[-1]
+        # Pydantic v2 model_copy
+        updated_media = list(span.media) + [media_item]
+        updated_span = span.model_copy(update={"media": updated_media})
+        active[-1] = updated_span
+        _active_spans.set(active)

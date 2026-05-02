@@ -5,6 +5,12 @@ from datetime import datetime
 from typing import Dict, List, Optional, Literal, Any
 from pydantic import BaseModel, Field
 
+class MediaContent(BaseModel):
+    type: Literal["image", "audio", "video"]
+    mime_type: str
+    data: str  # base64 encoded
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
 class SpanTiming(BaseModel):
     start_time: datetime
     end_time: datetime
@@ -27,6 +33,7 @@ class Span(BaseModel):
     kind: Literal["llm", "tool", "agent", "chain", "custom"]
     inputs: Dict[str, Any] = Field(default_factory=dict)
     outputs: Dict[str, Any] = Field(default_factory=dict)
+    media: List[MediaContent] = Field(default_factory=list)
     metadata: SpanMetadata
     timing: SpanTiming
 
