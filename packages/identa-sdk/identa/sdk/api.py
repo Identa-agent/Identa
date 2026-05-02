@@ -1,11 +1,13 @@
 import uuid
+from datetime import datetime, timezone
 from typing import Any, List, Optional, Union, Dict
 from identa.core.domain.models import Workspace, Run, MetricSpec
 from identa.core.domain.evaluation import EvaluationEngine
 from identa.core.domain.metrics import ExactMatchMetric, LatencyMetric
+from identa.core.domain.results import EvaluationResult
 from identa.core.persistence.sqlite_adapter import SQLiteStorageAdapter
 from identa.core.application.commands.workspace_commands import WorkspaceCommandHandler, CreateWorkspaceCommand
-from identa.core.application.commands.run_commands import RunCommandHandler, StartRunCommand
+from identa.core.application.commands.run_commands import RunCommandHandler, StartRunCommand, FinishRunCommand
 from identa.sdk.registry import AgentRegistry
 from identa.sdk.adapters.base import WrappedAgent
 import identa.sdk.adapters  # noqa: F401  triggers registration
@@ -43,27 +45,55 @@ def set_workspace(name: str, db_url: str = "sqlite:///identa.db"):
     _client = IdentaClient(workspace_id=name, db_url=db_url)
 
 class RunContext:
-    def __init__(self, run: Run):
-        self.run = run
+    """Context manager that wraps a Run and provides the user-facing run API."""
 
-    def __enter__(self):
+    def __init__(self, run: Run, client: "IdentaClient"):
+        self.run = run
+        self._client = client
+        self._result: Optional[EvaluationResult] = None
+
+    def __enter__(self) -> "RunContext":
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        # Update run status to finished in storage if needed
-        pass
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        """Finalize the run: mark finished or failed and persist the update."""
+        status = "failed" if exc_type is not None else "finished"
+        self._client.run_handler.handle_finish_run(
+            FinishRunCommand(run_id=self.run.id, status=status)
+        )
+        return False  # Never suppress exceptions.
+
+    def log_params(self, params: Dict[str, Any]) -> None:
+        """Attach key-value parameters to this run (persisted immediately)."""
+        self.run.params.update(params)
+        self._client.storage.save_run(self.run)
+
+    def set_tags(self, tags: Dict[str, Any]) -> None:
+        """Attach tags to this run (persisted immediately)."""
+        self.run.tags.update(tags)
+        self._client.storage.save_run(self.run)
+
+    def log_results(self, result: EvaluationResult) -> None:
+        """Associate an EvaluationResult with this run (persisted via storage)."""
+        self._result = result
+        self._client.storage.save_evaluation_result(result)
+
+    @property
+    def result(self) -> Optional[EvaluationResult]:
+        return self._result
+
 
 def start_run(name: str) -> RunContext:
     if not _client:
         raise ValueError("Call set_workspace first")
-    
+
     run_id = str(uuid.uuid4())
     run = _client.run_handler.handle_start_run(StartRunCommand(
         id=run_id,
         workspace_id=_client.workspace_id,
         name=name
     ))
-    return RunContext(run)
+    return RunContext(run, _client)
 
 def evaluate(agent: Any, suite: List[Dict[str, Any]], **kwargs):
     if not _client:
@@ -87,10 +117,6 @@ def evaluate(agent: Any, suite: List[Dict[str, Any]], **kwargs):
 
 def inspect(agent: Any) -> "AgentStructure":
     """Optional: inspect an agent without running a suite."""
-    if not _client:
-         # Minimal detection doesn't technically need _client but spec says evaluate does.
-         # Actually inspect doesn't need _client based on the spec code.
-         pass
     if isinstance(agent, WrappedAgent):
         agent = agent.original
     adapter = AgentRegistry.detect(agent)
