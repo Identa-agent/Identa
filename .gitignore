@@ -53,6 +53,7 @@ coverage.xml
 .env
 .env.*
 !.env.example
+spec/
 
 # Notebooks
 .ipynb_checkpoints/
