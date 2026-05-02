@@ -5,6 +5,7 @@ from identa.core.domain.models import Workspace, Run, MetricSpec
 from identa.core.domain.evaluation import EvaluationEngine
 from identa.core.domain.metrics import ExactMatchMetric, LatencyMetric
 from identa.core.domain.results import EvaluationResult
+from identa.core.domain.comparison import ComparisonEngine, ComparisonResult
 from identa.core.persistence.sqlite_adapter import SQLiteStorageAdapter
 from identa.core.application.commands.workspace_commands import WorkspaceCommandHandler, CreateWorkspaceCommand
 from identa.core.application.commands.run_commands import RunCommandHandler, StartRunCommand, FinishRunCommand
@@ -121,3 +122,26 @@ def inspect(agent: Any) -> "AgentStructure":
         agent = agent.original
     adapter = AgentRegistry.detect(agent)
     return adapter.inspect(agent)
+
+def compare_to_baseline(result: EvaluationResult, baseline_name: str = "default") -> ComparisonResult:
+    """Compares an evaluation result against a registered baseline."""
+    if not _client:
+        raise ValueError("Call set_workspace first")
+    
+    baseline = _client.storage.get_baseline(_client.workspace_id, baseline_name)
+    if not baseline:
+        raise ValueError(f"Baseline '{baseline_name}' not found in workspace '{_client.workspace_id}'")
+    
+    baseline_results = _client.storage.list_evaluation_results(baseline.run_id)
+    if not baseline_results:
+        raise ValueError(f"No evaluation results found for baseline run '{baseline.run_id}'")
+    
+    # Compare against the first (primary) result for the baseline run
+    return ComparisonEngine.compare(baseline_results[0], result)
+
+def assert_no_regressions(result: EvaluationResult, baseline_name: str = "default"):
+    """Asserts that there are no regressions compared to the baseline."""
+    comparison = compare_to_baseline(result, baseline_name)
+    if comparison.regressions:
+        raise AssertionError(f"Regressions detected: {', '.join(comparison.regressions)}\n{comparison.report()}")
+    print(f"✅ No regressions detected against baseline '{baseline_name}'")
