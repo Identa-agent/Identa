@@ -45,11 +45,30 @@ class LangGraphAdapter(BaseAdapter):
     framework_name = "langgraph"
 
     def inspect(self, graph: Any) -> AgentStructure:
-        nodes = [
-            AgentNode(id=name, type="custom", name=name, id_stability="stable")
-            for name in graph.nodes.keys()
-        ]
-        edges: list[AgentEdge] = []  # TODO Phase 2: extract real edges
+        # Use LangGraph's get_graph() if available to extract nodes and edges
+        try:
+            drawable = graph.get_graph()
+            nodes = []
+            for node in drawable.nodes.values():
+                # Map LangGraph node types to Identa types if possible
+                nodes.append(AgentNode(
+                    id=node.id, 
+                    type="custom", 
+                    name=node.name, 
+                    id_stability="stable"
+                ))
+            
+            edges = []
+            for edge in drawable.edges:
+                edges.append(AgentEdge(from_node=edge.source, to_node=edge.target))
+        except (AttributeError, Exception):
+            # Fallback to minimal extraction from graph.nodes
+            nodes = [
+                AgentNode(id=name, type="custom", name=name, id_stability="stable")
+                for name in graph.nodes.keys()
+            ]
+            edges = []
+
         struct_data = {
             "nodes": sorted(n.id for n in nodes),
             "edges": sorted(f"{e.from_node}->{e.to_node}" for e in edges),
