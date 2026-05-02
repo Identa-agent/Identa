@@ -6,6 +6,41 @@ from identa.core.domain.tracing_service import TracingService
 from identa.core.domain.tracing import SpanMetadata
 from identa.core.domain.structure import AgentStructure, AgentNode, AgentEdge
 
+try:
+    from langchain.callbacks.base import BaseCallbackHandler
+except ImportError:
+    BaseCallbackHandler = object
+
+class IdentaLangGraphCallback(BaseCallbackHandler):
+    def __init__(self):
+        self.span_ids = {}
+
+    def on_chain_start(self, serialized: dict, inputs: dict, **kwargs) -> None:
+        name = serialized.get("name", "node")
+        # Avoid double-tracing the root agent call if it's already traced by LangGraphAdapter.wrap
+        if name == "LangGraph":
+            return
+        
+        run_id = str(kwargs.get("run_id", name))
+        sid = TracingService.start_span(
+            name=name,
+            kind="node",
+            metadata=SpanMetadata(node_id=name)
+        )
+        self.span_ids[run_id] = sid
+
+    def on_chain_end(self, response: Any, **kwargs: Any) -> None:
+        run_id = str(kwargs.get("run_id", "node"))
+        sid = self.span_ids.pop(run_id, None)
+        if sid:
+            TracingService.end_span(sid)
+
+    def on_chain_error(self, error: BaseException, **kwargs: Any) -> None:
+        run_id = str(kwargs.get("run_id", "node"))
+        sid = self.span_ids.pop(run_id, None)
+        if sid:
+            TracingService.end_span(sid)
+
 class LangGraphAdapter(BaseAdapter):
     framework_name = "langgraph"
 
@@ -25,14 +60,26 @@ class LangGraphAdapter(BaseAdapter):
     def wrap(self, graph: Any) -> WrappedAgent:
         # No monkeypatch. We capture the bound method and call it through the proxy.
         original_invoke = graph.invoke
-        def traced(input_value: Any) -> Any:
+        
+        def traced(input_value: Any, config: Any = None, **kwargs: Any) -> Any:
             span_id = TracingService.start_span(
                 name="langgraph_invoke",
                 kind="agent",
                 metadata=SpanMetadata(),
             )
+            
+            # Prepare config with Identa callback
+            if config is None:
+                config = {}
+            
+            callbacks = config.get("callbacks", [])
+            if not any(isinstance(c, IdentaLangGraphCallback) for c in callbacks):
+                # Copy to avoid mutating user's config list
+                callbacks = list(callbacks) + [IdentaLangGraphCallback()]
+                config["callbacks"] = callbacks
+                
             try:
-                return original_invoke(input_value)
+                return original_invoke(input_value, config=config, **kwargs)
             finally:
                 TracingService.end_span(span_id)
         return WrappedAgent(callable=traced, original=graph, framework_name=self.framework_name)
