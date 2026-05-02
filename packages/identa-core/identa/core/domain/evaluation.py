@@ -96,6 +96,8 @@ class EvaluationEngine:
 
             per_test_results.append(PerTestResult(
                 test_id=test_id,
+                input=test_input,
+                expected=expected,
                 output=output,
                 scores=scores,
                 trace_ref=trace.id if trace else None

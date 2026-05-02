@@ -5,6 +5,8 @@ from .structure import ObservedStructureDelta
 
 class PerTestResult(BaseModel):
     test_id: str
+    input: Any = None
+    expected: Any = None
     output: Any
     scores: Dict[str, float]
     trace_ref: Optional[str] = None
@@ -29,3 +31,60 @@ class EvaluationResult(BaseModel):
     per_test: List[PerTestResult]
     trace_refs: List[str] = Field(default_factory=list)
     structure_delta: Optional[ObservedStructureDelta] = None
+
+    def summary(self) -> str:
+        """Returns a human-readable summary of the evaluation results."""
+        lines = [
+            f"Evaluation Result {self.id}",
+            f"Run ID: {self.run_id}",
+            f"Suite Hash: {self.suite_hash} ({self.suite_version})",
+            f"Resolution: {self.resolution}",
+            "-" * 40,
+            "Aggregates:"
+        ]
+        for agg in self.aggregates:
+            lines.append(f"  {agg.metric_name}: {agg.value:.4f} (n={agg.count})")
+        
+        fail_count = len(self.failures())
+        lines.append("-" * 40)
+        lines.append(f"Total Tests: {len(self.per_test)}")
+        lines.append(f"Failures: {fail_count}")
+        
+        return "\n".join(lines)
+
+    def failures(self, threshold: float = 1.0) -> List[FailureRecord]:
+        """Returns a list of FailureRecord for tests where any metric score was below threshold."""
+        fails = []
+        for res in self.per_test:
+            is_fail = any(score < threshold for score in res.scores.values())
+            if is_fail:
+                fails.append(FailureRecord(
+                    test_id=res.test_id,
+                    input=res.input,
+                    expected_output=res.expected,
+                    actual_output=res.output,
+                    scores=res.scores,
+                    trace_ref=res.trace_ref
+                ))
+        return fails
+
+    def to_df(self) -> Any:
+        """Converts the per-test results to a pandas DataFrame."""
+        try:
+            import pandas as pd
+        except ImportError:
+            raise ImportError("pandas is required for to_df(). Install it with 'pip install pandas'.")
+        
+        data = []
+        for res in self.per_test:
+            row = {
+                "test_id": res.test_id,
+                "output": str(res.output),
+                "trace_ref": res.trace_ref
+            }
+            # Flatten scores
+            for name, score in res.scores.items():
+                row[f"score:{name}"] = score
+            data.append(row)
+        
+        return pd.DataFrame(data)
