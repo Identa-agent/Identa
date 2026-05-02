@@ -12,6 +12,7 @@ from identa.core.application.commands.workspace_commands import WorkspaceCommand
 from identa.core.application.commands.run_commands import RunCommandHandler, StartRunCommand, FinishRunCommand
 from identa.sdk.registry import AgentRegistry
 from identa.sdk.adapters.base import WrappedAgent
+from identa.sdk.suites import load_suite
 import identa.sdk.adapters  # noqa: F401  triggers registration
 
 class IdentaClient:

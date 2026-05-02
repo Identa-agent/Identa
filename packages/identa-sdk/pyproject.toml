@@ -8,6 +8,7 @@ license = "Apache-2.0"
 dependencies = [
     "identa-core>=0.4.5",
     "click",
+    "toml",
 ]
 
 [project.optional-dependencies]
