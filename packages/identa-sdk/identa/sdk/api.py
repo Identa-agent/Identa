@@ -11,7 +11,7 @@ from identa.core.domain.calibration import CalibrationEngine
 from identa.core.persistence.sqlite_adapter import SQLiteStorageAdapter
 from identa.core.persistence.local_artifact_adapter import LocalArtifactAdapter
 from identa.core.adapters.mlflow_exporter import MLflowExporter
-from identa.core.application.commands.base import Command
+from identa.core.application.commands.base import Command, Query
 from identa.core.application.commands.workspace_commands import (
     WorkspaceCommandHandler, 
     CreateWorkspaceCommand
@@ -20,6 +20,11 @@ from identa.core.application.commands.run_commands import (
     RunCommandHandler, 
     StartRunCommand, 
     FinishRunCommand
+)
+from identa.core.application.queries.run_queries import (
+    RunQueryHandler,
+    GetRunQuery,
+    ListRunsQuery
 )
 from identa.core.domain.models import ReproducibilityBundle
 from identa.core.ports.storage import StoragePort
@@ -46,6 +51,7 @@ class IdentaClient:
         # Handlers
         self.workspace_handler = WorkspaceCommandHandler(self.storage)
         self.run_handler = RunCommandHandler(self.storage)
+        self.query_handler = RunQueryHandler(self.storage)
 
         # Register in DI container
         registry = get_registry()
@@ -53,6 +59,8 @@ class IdentaClient:
         registry.register_handler(CreateWorkspaceCommand, self.workspace_handler)
         registry.register_handler(StartRunCommand, self.run_handler)
         registry.register_handler(FinishRunCommand, self.run_handler)
+        registry.register_handler(GetRunQuery, self.query_handler)
+        registry.register_handler(ListRunsQuery, self.query_handler)
 
         # Ensure workspace exists
         self.workspace_handler.handle_create_workspace(CreateWorkspaceCommand(
@@ -202,7 +210,7 @@ def calibrate(agent_factory: Callable, suite: List[Dict[str, Any]], param_grid: 
         raise ValueError("Call set_workspace first")
     return _client.calib_engine.calibrate(agent_factory, suite, param_grid, **kwargs)
 
-def execute(command: Command):
+def execute(command: Union[Command, Query]):
     """
     Generic command bus to route core commands through the SDK.
     Injects necessary dependencies automatically.
@@ -211,12 +219,15 @@ def execute(command: Command):
     handler = registry.get_handler(type(command))
     
     # Map command to the correct handle method
-    # In a more advanced version, we could have a uniform handle() method in handlers
     if isinstance(command, CreateWorkspaceCommand):
         return handler.handle_create_workspace(command)
     elif isinstance(command, StartRunCommand):
         return handler.handle_start_run(command)
     elif isinstance(command, FinishRunCommand):
         return handler.handle_finish_run(command)
+    elif isinstance(command, GetRunQuery):
+        return handler.handle_get_run(command)
+    elif isinstance(command, ListRunsQuery):
+        return handler.handle_list_runs(command)
     else:
-        raise ValueError(f"Unsupported command type: {type(command)}")
+        raise ValueError(f"Unsupported command/query type: {type(command)}")

@@ -1,12 +1,12 @@
 from typing import Optional, List
-from pydantic import BaseModel
 from identa.core.domain.models import Run
 from identa.core.ports.storage import StoragePort
+from identa.core.application.commands.base import Query
 
-class GetRunQuery(BaseModel):
+class GetRunQuery(Query):
     run_id: str
 
-class ListRunsQuery(BaseModel):
+class ListRunsQuery(Query):
     workspace_id: str
 
 class RunQueryHandler:
