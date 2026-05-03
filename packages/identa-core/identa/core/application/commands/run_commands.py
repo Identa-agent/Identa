@@ -41,8 +41,10 @@ class RunCommandHandler:
         run = self.storage.get_run(cmd.run_id)
         if run is None:
             return
-        updated = run.model_copy(update={
-            "status": cmd.status,
-            "ended_at": datetime.now(timezone.utc),
-        })
-        self.storage.save_run(updated)
+            
+        if cmd.status == "failed":
+            run.fail("Run manually marked as failed via command.")
+        else:
+            run.mark_completed()
+            
+        self.storage.save_run(run)
