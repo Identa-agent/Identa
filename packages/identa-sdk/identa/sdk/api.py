@@ -10,7 +10,7 @@ from identa.core.domain.reproduction import ReproductionEngine, capture_environm
 from identa.core.domain.calibration import CalibrationEngine
 from identa.core.persistence.sqlite_adapter import SQLiteStorageAdapter
 from identa.core.persistence.local_artifact_adapter import LocalArtifactAdapter
-from identa.core.adapters.mlflow_exporter import MLflowExporter
+from identa.core.adapters.mlflow_exporter import MLflowExporter, HAS_MLFLOW
 from identa.core.application.commands.base import Command, Query
 from identa.core.application.commands.workspace_commands import (
     WorkspaceCommandHandler, 
@@ -28,17 +28,23 @@ from identa.core.application.queries.run_queries import (
 )
 from identa.core.domain.models import ReproducibilityBundle
 from identa.core.ports.storage import StoragePort
+from identa.core.ports.exporter import ExporterPort
 from identa.sdk.registry import AgentRegistry, get_registry
 from identa.sdk.adapters.base import WrappedAgent
 from identa.sdk.suites import load_suite
 import identa.sdk.adapters  # noqa: F401  triggers registration
 
 class IdentaClient:
-    def __init__(self, workspace_id: str, db_url: str = "sqlite:///identa.db", artifact_path: str = "artifacts"):
+    def __init__(self, workspace_id: str, db_url: str = "sqlite:///identa.db", artifact_path: str = "artifacts", tracking_uri: Optional[str] = None):
         self.storage = SQLiteStorageAdapter(db_url)
         self.artifacts = LocalArtifactAdapter(artifact_path)
         self.workspace_id = workspace_id
         
+        # Initialize exporter if available
+        self.exporter: Optional[ExporterPort] = None
+        if HAS_MLFLOW:
+            self.exporter = MLflowExporter(tracking_uri=tracking_uri)
+
         # Initialize registries
         self.metrics_registry = {
             "exact_match": ExactMatchMetric(),
@@ -48,14 +54,17 @@ class IdentaClient:
         self.repro_engine = ReproductionEngine(self.engine)
         self.calib_engine = CalibrationEngine(evaluate)
         
-        # Handlers
-        self.workspace_handler = WorkspaceCommandHandler(self.storage)
-        self.run_handler = RunCommandHandler(self.storage)
+        # Handlers with DI
+        self.workspace_handler = WorkspaceCommandHandler(self.storage, exporter=self.exporter)
+        self.run_handler = RunCommandHandler(self.storage, exporter=self.exporter)
         self.query_handler = RunQueryHandler(self.storage)
 
         # Register in DI container
         registry = get_registry()
         registry.register_service(StoragePort, self.storage)
+        if self.exporter:
+            registry.register_service(ExporterPort, self.exporter)
+            
         registry.register_handler(CreateWorkspaceCommand, self.workspace_handler)
         registry.register_handler(StartRunCommand, self.run_handler)
         registry.register_handler(FinishRunCommand, self.run_handler)
@@ -74,9 +83,9 @@ class IdentaClient:
 
 _client: Optional[IdentaClient] = None
 
-def set_workspace(name: str, db_url: str = "sqlite:///identa.db"):
+def set_workspace(name: str, db_url: str = "sqlite:///identa.db", tracking_uri: Optional[str] = None):
     global _client
-    _client = IdentaClient(workspace_id=name, db_url=db_url)
+    _client = IdentaClient(workspace_id=name, db_url=db_url, tracking_uri=tracking_uri)
 
 class RunContext:
     """Context manager that wraps a Run and provides the user-facing run API."""
@@ -201,6 +210,10 @@ def reproduce(run_id: str, agent: Any, suite: List[Dict[str, Any]], **kwargs):
 
 def export_to_mlflow(result: EvaluationResult, tracking_uri: Optional[str] = None) -> str:
     """Exports an evaluation result to MLflow."""
+    if _client and _client.exporter:
+        return _client.exporter.export_result(result)
+    
+    # Fallback if no client or exporter (Task 1.1 handles the Error if mlflow missing)
     exporter = MLflowExporter(tracking_uri=tracking_uri)
     return exporter.export_result(result)
 

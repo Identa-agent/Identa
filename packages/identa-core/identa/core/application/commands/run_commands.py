@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from identa.core.domain.models import Run
 from identa.core.ports.storage import StoragePort
+from identa.core.ports.exporter import ExporterPort
 from identa.core.application.commands.base import Command
 
 class StartRunCommand(Command):
@@ -18,8 +19,9 @@ class FinishRunCommand(Command):
     status: str = "finished"  # "finished" | "failed"
 
 class RunCommandHandler:
-    def __init__(self, storage: StoragePort):
+    def __init__(self, storage: StoragePort, exporter: Optional[ExporterPort] = None):
         self.storage = storage
+        self.exporter = exporter
 
     def handle_start_run(self, cmd: StartRunCommand) -> Run:
         run = Run(
