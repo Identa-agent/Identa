@@ -11,8 +11,16 @@ from identa.core.domain.calibration import CalibrationEngine
 from identa.core.persistence.sqlite_adapter import SQLiteStorageAdapter
 from identa.core.persistence.local_artifact_adapter import LocalArtifactAdapter
 from identa.core.adapters.mlflow_exporter import MLflowExporter
-from identa.core.application.commands.workspace_commands import WorkspaceCommandHandler, CreateWorkspaceCommand
-from identa.core.application.commands.run_commands import RunCommandHandler, StartRunCommand, FinishRunCommand
+from identa.core.application.commands.base import Command
+from identa.core.application.commands.workspace_commands import (
+    WorkspaceCommandHandler, 
+    CreateWorkspaceCommand
+)
+from identa.core.application.commands.run_commands import (
+    RunCommandHandler, 
+    StartRunCommand, 
+    FinishRunCommand
+)
 from identa.core.domain.models import ReproducibilityBundle
 from identa.sdk.registry import AgentRegistry
 from identa.sdk.adapters.base import WrappedAgent
@@ -186,9 +194,19 @@ def calibrate(agent_factory: Callable, suite: List[Dict[str, Any]], param_grid: 
         raise ValueError("Call set_workspace first")
     return _client.calib_engine.calibrate(agent_factory, suite, param_grid, **kwargs)
 
-def execute(command: Any):
+def execute(command: Command):
     """
     Generic command bus to route core commands through the SDK.
-    Implemented in Step 2.
+    Injects necessary dependencies automatically.
     """
-    raise NotImplementedError("Command bus will be implemented in Step 2.")
+    if not _client:
+        raise ValueError("Call set_workspace first")
+
+    if isinstance(command, CreateWorkspaceCommand):
+        return _client.workspace_handler.handle_create_workspace(command)
+    elif isinstance(command, StartRunCommand):
+        return _client.run_handler.handle_start_run(command)
+    elif isinstance(command, FinishRunCommand):
+        return _client.run_handler.handle_finish_run(command)
+    else:
+        raise ValueError(f"Unsupported command type: {type(command)}")

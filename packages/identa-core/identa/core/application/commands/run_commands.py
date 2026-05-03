@@ -1,10 +1,10 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-from pydantic import BaseModel
 from identa.core.domain.models import Run
 from identa.core.ports.storage import StoragePort
+from identa.core.application.commands.base import Command
 
-class StartRunCommand(BaseModel):
+class StartRunCommand(Command):
     id: str
     workspace_id: str
     name: str
@@ -13,7 +13,7 @@ class StartRunCommand(BaseModel):
     evaluation_mode: str = "controlled"
 
 
-class FinishRunCommand(BaseModel):
+class FinishRunCommand(Command):
     run_id: str
     status: str = "finished"  # "finished" | "failed"
 

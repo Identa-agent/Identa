@@ -1,8 +1,8 @@
-from pydantic import BaseModel
 from identa.core.domain.models import Workspace
 from identa.core.ports.storage import StoragePort
+from identa.core.application.commands.base import Command
 
-class CreateWorkspaceCommand(BaseModel):
+class CreateWorkspaceCommand(Command):
     id: str
     name: str
     backend_uri: str
