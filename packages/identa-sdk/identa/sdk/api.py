@@ -185,3 +185,10 @@ def calibrate(agent_factory: Callable, suite: List[Dict[str, Any]], param_grid: 
     if not _client:
         raise ValueError("Call set_workspace first")
     return _client.calib_engine.calibrate(agent_factory, suite, param_grid, **kwargs)
+
+def execute(command: Any):
+    """
+    Generic command bus to route core commands through the SDK.
+    Implemented in Step 2.
+    """
+    raise NotImplementedError("Command bus will be implemented in Step 2.")

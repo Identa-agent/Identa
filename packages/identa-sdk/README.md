@@ -23,12 +23,12 @@ suite = [
     {"input": {"query": "Fly to Paris"}, "expected": {"destination": "CDG"}}
 ]
 
-# Run evaluation with metrics
+# Run evaluation with node-level resolution
 results = identa.evaluate(
     agent=my_agent, 
     suite=suite,
     metrics=["accuracy", "latency"],
-    resolution="graph"
+    resolution="node"
 )
 
 print(results.report())
@@ -53,33 +53,29 @@ spans = tracer.get_spans()
 Validate and apply model-binding swaps (e.g., swapping `gpt-4o` for `claude-3-5-sonnet`) safely.
 
 ```python
-from identa.sdk.migration import MigrationEngine
+from identa.core.domain.migration import MigrationEngine, MigrationPlan
 
-engine = MigrationEngine(workspace="travel_agent")
+# Validate if a model swap is safe based on structural drift
+plan = MigrationPlan(id="swap-to-claude", source_structure_hash="...", changes=[])
+plan.replace_model(node="llm_1", to="claude-3-5-sonnet")
 
-# Validate if the swap is safe based on structural drift
-is_safe = engine.validate_swap(
-    source_model="gpt-4o", 
-    target_model="claude-3-5-sonnet"
-)
+results = identa.evaluate(agent=my_agent, suite=suite)
+report = MigrationEngine.validate(plan, agent=my_agent, current_structure=results.structure)
 
-if is_safe:
-    engine.apply_swap(target_model="claude-3-5-sonnet")
+if report.ok:
+    print("Migration is safe!")
 ```
 
 ### 4. Reproduction Engine
 Replay previous experiments and detect structural drift between the original run and the current state.
 
 ```python
-from identa.sdk.reproduction import ReproductionEngine
-
-repro = ReproductionEngine(workspace="travel_agent")
-
-# Replay a failed run
-analysis = repro.replay(run_id="run_123")
-
-if analysis.has_drift:
-    print(f"Structural drift detected: {analysis.drift_details}")
+# Replay a previous run with structural parity checks
+results = identa.reproduce(
+    run_id="run_123",
+    agent=my_agent,
+    suite=suite
+)
 ```
 
 ## CLI

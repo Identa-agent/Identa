@@ -10,7 +10,8 @@ from .sdk import (
     assert_no_regressions, 
     reproduce,
     export_to_mlflow,
-    calibrate
+    calibrate,
+    execute
 )
 
 __all__ = [
@@ -23,5 +24,6 @@ __all__ = [
     "assert_no_regressions", 
     "reproduce",
     "export_to_mlflow",
-    "calibrate"
+    "calibrate",
+    "execute"
 ]
