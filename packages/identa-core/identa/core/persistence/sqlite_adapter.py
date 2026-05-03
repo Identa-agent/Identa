@@ -1,7 +1,7 @@
 import json
 from typing import List, Optional
 from datetime import datetime
-from sqlalchemy import create_engine, Column, String, DateTime, Text, ForeignKey, Integer
+from sqlalchemy import create_engine, Column, String, DateTime, Text, ForeignKey, Integer, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from identa.core.domain.models import Workspace, Run, Baseline, ReproducibilityBundle
 from identa.core.domain.results import EvaluationResult
@@ -64,8 +64,20 @@ class ReproducibilityBundleModel(Base):
 class SQLiteStorageAdapter(StoragePort):
     def __init__(self, database_url: str):
         self.engine = create_engine(database_url)
+        self._run_migrations()
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
+
+    def _run_migrations(self) -> None:
+        """Handles manual SQL schema migrations."""
+        # This is where ALTER TABLE or CREATE INDEX statements would go
+        # For now, it ensures the basic schema is handled by SQLAlchemy
+        # but provides the hook for future schema evolutions.
+        with self.engine.connect() as conn:
+            # Example migration logic:
+            # conn.execute(text("ALTER TABLE runs ADD COLUMN metadata TEXT"))
+            # conn.commit()
+            pass
 
     def save_workspace(self, workspace: Workspace) -> None:
         with self.Session() as session:
@@ -149,8 +161,6 @@ class SQLiteStorageAdapter(StoragePort):
             ]
 
     def save_baseline(self, baseline: Baseline) -> None:
-        # Note: Baseline model in models.py doesn't have workspace_id, but it's needed for the table
-        # I'll need to retrieve the run to get the workspace_id or change the model
         with self.Session() as session:
             run = session.query(RunModel).filter_by(id=baseline.run_id).first()
             if not run:
@@ -176,8 +186,6 @@ class SQLiteStorageAdapter(StoragePort):
                 )
             return None
 
-    # ── EvaluationResult persistence ───────────────────────────────────────────
-
     def save_evaluation_result(self, result: EvaluationResult) -> None:
         with self.Session() as session:
             model = EvaluationResultModel(
@@ -202,8 +210,6 @@ class SQLiteStorageAdapter(StoragePort):
             models = session.query(EvaluationResultModel).filter_by(run_id=run_id).all()
             return [EvaluationResult.model_validate_json(m.data) for m in models]
 
-    # ── ReproducibilityBundle persistence ─────────────────────────────────────
-
     def save_reproducibility_bundle(self, bundle: ReproducibilityBundle) -> None:
         with self.Session() as session:
             model = ReproducibilityBundleModel(
@@ -225,9 +231,6 @@ class SQLiteStorageAdapter(StoragePort):
         with self.Session() as session:
             model = session.query(ReproducibilityBundleModel).filter_by(id=bundle_id).first()
             if model:
-                # Manual ID mapping because Pydantic models might have different field names
-                # but here they match ReproducibilityBundle fields.
-                # Actually, I'll use model_validate with a dict for safety.
                 return ReproducibilityBundle(
                     id=model.id,
                     python_version=model.python_version,
