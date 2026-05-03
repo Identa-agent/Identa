@@ -1,4 +1,5 @@
 # packages/identa-sdk/identa/sdk/registry.py
+import contextvars
 from dataclasses import dataclass
 from typing import Any, Callable, Type, TYPE_CHECKING, Dict, Optional
 
@@ -62,10 +63,14 @@ class Registry:
             raise ValueError(f"No handler registered for command type {command_type}")
         return self._handlers[command_type]
 
-_global_registry: Optional[Registry] = None
+# ContextVar for thread-safe/async-safe global state
+_registry_var: contextvars.ContextVar[Optional[Registry]] = contextvars.ContextVar(
+    'identa_registry', default=None
+)
 
 def get_registry() -> Registry:
-    global _global_registry
-    if _global_registry is None:
-        _global_registry = Registry()
-    return _global_registry
+    registry = _registry_var.get()
+    if registry is None:
+        registry = Registry()
+        _registry_var.set(registry)
+    return registry

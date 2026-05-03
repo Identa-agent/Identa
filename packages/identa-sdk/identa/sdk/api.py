@@ -1,4 +1,5 @@
 import uuid
+import contextvars
 from datetime import datetime, timezone
 from typing import Any, List, Optional, Union, Dict, Callable
 from identa.core.domain.models import Workspace, Run, MetricSpec
@@ -81,11 +82,17 @@ class IdentaClient:
     def evaluate(self, agent: Any, suite: List[Dict[str, Any]], run_id: str, **kwargs):
         return self.engine.evaluate(agent, suite, run_id, **kwargs)
 
-_client: Optional[IdentaClient] = None
+# ContextVar for thread-safe client access
+_client_var: contextvars.ContextVar[Optional[IdentaClient]] = contextvars.ContextVar(
+    'identa_client', default=None
+)
 
 def set_workspace(name: str, db_url: str = "sqlite:///identa.db", tracking_uri: Optional[str] = None):
-    global _client
-    _client = IdentaClient(workspace_id=name, db_url=db_url, tracking_uri=tracking_uri)
+    client = IdentaClient(workspace_id=name, db_url=db_url, tracking_uri=tracking_uri)
+    _client_var.set(client)
+
+def get_client() -> Optional[IdentaClient]:
+    return _client_var.get()
 
 class RunContext:
     """Context manager that wraps a Run and provides the user-facing run API."""
@@ -127,19 +134,21 @@ class RunContext:
 
 
 def start_run(name: str) -> RunContext:
-    if not _client:
+    client = get_client()
+    if not client:
         raise ValueError("Call set_workspace first")
 
     run_id = str(uuid.uuid4())
-    run = _client.run_handler.handle_start_run(StartRunCommand(
+    run = client.run_handler.handle_start_run(StartRunCommand(
         id=run_id,
-        workspace_id=_client.workspace_id,
+        workspace_id=client.workspace_id,
         name=name
     ))
-    return RunContext(run, _client)
+    return RunContext(run, client)
 
 def evaluate(agent: Any, suite: List[Dict[str, Any]], **kwargs):
-    if not _client:
+    client = get_client()
+    if not client:
         raise ValueError("Call set_workspace first")
 
     # If user already passed a WrappedAgent (advanced use), skip detection.
@@ -156,7 +165,7 @@ def evaluate(agent: Any, suite: List[Dict[str, Any]], **kwargs):
         wrapped = adapter.wrap(agent)
 
     run_id = kwargs.pop("run_id", "standalone")
-    return _client.evaluate(wrapped, suite, run_id=run_id, **kwargs)
+    return client.evaluate(wrapped, suite, run_id=run_id, **kwargs)
 
 def inspect(agent: Any) -> "AgentStructure":
     """Optional: inspect an agent without running a suite."""
@@ -167,14 +176,15 @@ def inspect(agent: Any) -> "AgentStructure":
 
 def compare_to_baseline(result: EvaluationResult, baseline_name: str = "default") -> ComparisonResult:
     """Compares an evaluation result against a registered baseline."""
-    if not _client:
+    client = get_client()
+    if not client:
         raise ValueError("Call set_workspace first")
     
-    baseline = _client.storage.get_baseline(_client.workspace_id, baseline_name)
+    baseline = client.storage.get_baseline(client.workspace_id, baseline_name)
     if not baseline:
-        raise ValueError(f"Baseline '{baseline_name}' not found in workspace '{_client.workspace_id}'")
+        raise ValueError(f"Baseline '{baseline_name}' not found in workspace '{client.workspace_id}'")
     
-    baseline_results = _client.storage.list_evaluation_results(baseline.run_id)
+    baseline_results = client.storage.list_evaluation_results(baseline.run_id)
     if not baseline_results:
         raise ValueError(f"No evaluation results found for baseline run '{baseline.run_id}'")
     
@@ -190,10 +200,11 @@ def assert_no_regressions(result: EvaluationResult, baseline_name: str = "defaul
 
 def reproduce(run_id: str, agent: Any, suite: List[Dict[str, Any]], **kwargs):
     """Reproduces a past run by checking environmental and structural parity."""
-    if not _client:
+    client = get_client()
+    if not client:
         raise ValueError("Call set_workspace first")
     
-    run = _client.storage.get_run(run_id)
+    run = client.storage.get_run(run_id)
     if not run:
         raise ValueError(f"Run {run_id} not found")
         
@@ -210,8 +221,9 @@ def reproduce(run_id: str, agent: Any, suite: List[Dict[str, Any]], **kwargs):
 
 def export_to_mlflow(result: EvaluationResult, tracking_uri: Optional[str] = None) -> str:
     """Exports an evaluation result to MLflow."""
-    if _client and _client.exporter:
-        return _client.exporter.export_result(result)
+    client = get_client()
+    if client and client.exporter:
+        return client.exporter.export_result(result)
     
     # Fallback if no client or exporter (Task 1.1 handles the Error if mlflow missing)
     exporter = MLflowExporter(tracking_uri=tracking_uri)
@@ -219,9 +231,10 @@ def export_to_mlflow(result: EvaluationResult, tracking_uri: Optional[str] = Non
 
 def calibrate(agent_factory: Callable, suite: List[Dict[str, Any]], param_grid: Dict[str, List[Any]], **kwargs) -> Dict[str, Any]:
     """Orchestrates a calibration loop to find the best agent hyperparameters."""
-    if not _client:
+    client = get_client()
+    if not client:
         raise ValueError("Call set_workspace first")
-    return _client.calib_engine.calibrate(agent_factory, suite, param_grid, **kwargs)
+    return client.calib_engine.calibrate(agent_factory, suite, param_grid, **kwargs)
 
 def execute(command: Union[Command, Query]):
     """
