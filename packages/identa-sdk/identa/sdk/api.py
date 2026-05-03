@@ -22,7 +22,8 @@ from identa.core.application.commands.run_commands import (
     FinishRunCommand
 )
 from identa.core.domain.models import ReproducibilityBundle
-from identa.sdk.registry import AgentRegistry
+from identa.core.ports.storage import StoragePort
+from identa.sdk.registry import AgentRegistry, get_registry
 from identa.sdk.adapters.base import WrappedAgent
 from identa.sdk.suites import load_suite
 import identa.sdk.adapters  # noqa: F401  triggers registration
@@ -45,6 +46,13 @@ class IdentaClient:
         # Handlers
         self.workspace_handler = WorkspaceCommandHandler(self.storage)
         self.run_handler = RunCommandHandler(self.storage)
+
+        # Register in DI container
+        registry = get_registry()
+        registry.register_service(StoragePort, self.storage)
+        registry.register_handler(CreateWorkspaceCommand, self.workspace_handler)
+        registry.register_handler(StartRunCommand, self.run_handler)
+        registry.register_handler(FinishRunCommand, self.run_handler)
 
         # Ensure workspace exists
         self.workspace_handler.handle_create_workspace(CreateWorkspaceCommand(
@@ -199,14 +207,16 @@ def execute(command: Command):
     Generic command bus to route core commands through the SDK.
     Injects necessary dependencies automatically.
     """
-    if not _client:
-        raise ValueError("Call set_workspace first")
-
+    registry = get_registry()
+    handler = registry.get_handler(type(command))
+    
+    # Map command to the correct handle method
+    # In a more advanced version, we could have a uniform handle() method in handlers
     if isinstance(command, CreateWorkspaceCommand):
-        return _client.workspace_handler.handle_create_workspace(command)
+        return handler.handle_create_workspace(command)
     elif isinstance(command, StartRunCommand):
-        return _client.run_handler.handle_start_run(command)
+        return handler.handle_start_run(command)
     elif isinstance(command, FinishRunCommand):
-        return _client.run_handler.handle_finish_run(command)
+        return handler.handle_finish_run(command)
     else:
         raise ValueError(f"Unsupported command type: {type(command)}")
