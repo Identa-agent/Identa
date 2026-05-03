@@ -98,3 +98,11 @@ identa runs show <run_id>
 | **Node Tracing** | ✅ | ✅ | ✅ |
 | **Structural Inspection** | ✅ | ✅ | 🚧 |
 | **Model Migration** | ✅ | 🚧 | 🚧 |
+
+## Architecture & Contributing Guidelines
+
+To maintain clean architectural boundaries, all contributions must follow these rules:
+
+- **The Adapter Rule**: If you are integrating a new third-party framework (e.g., LlamaIndex, LangChain), it goes in `identa/sdk/adapters/`. If you are adding a new internal domain concept, metric, or tracing algorithm, it goes in `identa-core`.
+- **The Import Rule**: Application code (end-users) should only import from `identa.sdk`. Internal tools (like `identa-cli`) are permitted to instantiate `identa.core` commands directly, provided they use the `sdk.api.execute()` bus for execution.
+- **Strict Public API**: Only functions explicitly listed in `identa/__init__.py`'s `__all__` are considered part of the stable public API.

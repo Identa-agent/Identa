@@ -113,6 +113,14 @@ Identa follows a **Hexagonal Architecture** with **CQRS** enforced via package s
 - **Queries**: Materialize history and comparisons (e.g., `CompareRuns`).
 - **Ports**: Abstract storage (SQLite, Postgres) and artifact stores (FS, S3).
 
+## Architecture & Contributing Guidelines
+
+To maintain clean architectural boundaries, all contributions must follow these rules:
+
+- **The Adapter Rule**: If you are integrating a new third-party framework (e.g., LlamaIndex, LangChain), it goes in `identa-sdk/adapters/`. If you are adding a new internal domain concept, metric, or tracing algorithm, it goes in `identa-core`.
+- **The Import Rule**: Application code (end-users) should only import from `identa.sdk`. Internal tools (like `identa-cli`) are permitted to instantiate `identa.core` commands directly, provided they use the `sdk.api.execute()` bus for execution.
+- **Stateless Core**: Core handlers must be stateless. All dependencies (Storage, Exporters) must be injected via constructors. Core should never import from the SDK.
+
 ## License
 
 Apache-2.0
