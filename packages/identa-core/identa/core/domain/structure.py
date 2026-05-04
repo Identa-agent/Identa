@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Literal, Set
+from typing import Dict, List, Optional, Literal, Set, Any
 from pydantic import BaseModel, Field
 
 class AgentNode(BaseModel):
@@ -28,39 +28,31 @@ class ObservedStructureDelta(BaseModel):
     observed_frequency: Dict[str, float]
     traced_test_count: int
     total_test_count: int
+    normalized_structural_drift: float = 0.0
 
     @classmethod
     def compute(
         cls, 
         intended: Optional[AgentStructure], 
-        results: List[Any] # PerTestResult
+        unexpected_nodes: Dict[str, int],
+        missing_nodes: Dict[str, int],
+        total_unique_nodes: int,
+        observed_frequency: Dict[str, float],
+        traced_test_count: int,
+        total_test_count: int
     ) -> "ObservedStructureDelta":
         """Analyzes results to find differences between intended and observed structure."""
-        total_test_count = len(results)
-        traced_results = [r for r in results if r.trace_ref]
-        traced_test_count = len(traced_results)
         
-        intended_node_ids = {n.id for n in intended.nodes} if intended else set()
-        
-        observed_counts: Dict[str, int] = {}
-        for res in traced_results:
-            # We assume node_ids are captured in span metadata or similar
-            # For now, we'll look at the test's output or some internal state
-            # In a real impl, we'd need to fetch the TraceArtifact and check span node_ids.
-            # But we don't want to fetch all traces here.
-            # So we rely on the fact that evaluate() could have tracked node hits.
+        drift = 0.0
+        if total_unique_nodes > 0:
+            drift = (len(unexpected_nodes) + len(missing_nodes)) / total_unique_nodes
             
-            # Placeholder: extracting node hits from trace_ref is expensive.
-            # Let's assume the resolution was performed and we have some summary.
-            pass
-
-        # Since we don't have the full trace content here, we'll implement a skeleton
-        # that returns zero deltas for now, but with the correct structure.
         return cls(
-            missing_nodes={},
-            unexpected_nodes={},
+            missing_nodes=missing_nodes,
+            unexpected_nodes=unexpected_nodes,
             mismatched_ids=[],
-            observed_frequency={},
+            observed_frequency=observed_frequency,
             traced_test_count=traced_test_count,
-            total_test_count=total_test_count
+            total_test_count=total_test_count,
+            normalized_structural_drift=drift
         )

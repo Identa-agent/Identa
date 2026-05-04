@@ -148,20 +148,26 @@ class EvaluationEngine:
         # 5. Compute Structure Delta
         structure_delta = None
         if resolution != "boundary":
-            # In a real impl, we'd pass the actual counts to ObservedStructureDelta.compute
-            # For now, we'll use the tracked counts.
-            structure_delta = ObservedStructureDelta.compute(structure, per_test_results)
-            # Patching the frequencies for the wow factor
-            total = len(per_test_results)
-            structure_delta.observed_frequency = {nid: count/total for nid, count in observed_nodes_across_suite.items()}
+            intended_ids = {n.id for n in structure.nodes} if structure else set()
+            observed_ids = set(observed_nodes_across_suite.keys())
             
-            if structure:
-                intended_ids = {n.id for n in structure.nodes}
-                observed_ids = set(observed_nodes_across_suite.keys())
-                for nid in intended_ids - observed_ids:
-                    structure_delta.missing_nodes[nid] = 0
-                for nid in observed_ids - intended_ids:
-                    structure_delta.unexpected_nodes[nid] = observed_nodes_across_suite[nid]
+            missing_nodes = {nid: 0 for nid in intended_ids - observed_ids}
+            unexpected_nodes = {nid: observed_nodes_across_suite[nid] for nid in observed_ids - intended_ids}
+            
+            total_unique_nodes = len(intended_ids.union(observed_ids))
+            
+            total = len(per_test_results)
+            observed_frequency = {nid: count/total for nid, count in observed_nodes_across_suite.items()}
+            
+            structure_delta = ObservedStructureDelta.compute(
+                intended=structure,
+                unexpected_nodes=unexpected_nodes,
+                missing_nodes=missing_nodes,
+                total_unique_nodes=total_unique_nodes,
+                observed_frequency=observed_frequency,
+                traced_test_count=len([r for r in per_test_results if r.trace_ref]),
+                total_test_count=total
+            )
 
         return EvaluationResult(
             id=str(uuid.uuid4()),

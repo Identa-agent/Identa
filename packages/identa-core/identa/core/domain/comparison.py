@@ -9,6 +9,7 @@ class ComparisonResult(BaseModel):
     metric_deltas: Dict[str, float]  # { metric: change_percent }
     regressions: List[str]           # [ metric_name ]
     structure_drift: Optional[ObservedStructureDelta] = None
+    normalized_structural_drift: float = 0.0
 
     def report(self) -> str:
         """Returns a human-readable report of the comparison."""
@@ -29,10 +30,9 @@ class ComparisonResult(BaseModel):
         if self.structure_drift:
             lines.append("-" * 60)
             lines.append("Structure Drift Detected!")
-            # Basic summary of drift
-            lines.append(f"  Added nodes: {len(self.structure_drift.added_nodes)}")
-            lines.append(f"  Removed nodes: {len(self.structure_drift.removed_nodes)}")
-            lines.append(f"  Modified nodes: {len(self.structure_drift.modified_nodes)}")
+            lines.append(f"  Normalized structural drift: {self.normalized_structural_drift:.2%}")
+            lines.append(f"  Added nodes: {len(self.structure_drift.unexpected_nodes)}")
+            lines.append(f"  Removed nodes: {len(self.structure_drift.missing_nodes)}")
             
         return "\n".join(lines)
 
@@ -59,16 +59,18 @@ class ComparisonEngine:
                 
                 metric_deltas[m_name] = delta
                 
-                # Simple regression detection: if target < source (assuming higher is better for all metrics for now)
-                # In a real impl, we'd check MetricSpec.minimize
-                # Since we don't have MetricSpec here, we'll assume higher is better.
                 if t_val < s_val:
                     regressions.append(m_name)
+        
+        drift = 0.0
+        if target.structure_delta:
+            drift = target.structure_delta.normalized_structural_drift
         
         return ComparisonResult(
             source_run_id=source.run_id,
             target_run_id=target.run_id,
             metric_deltas=metric_deltas,
             regressions=regressions,
-            structure_drift=target.structure_delta
+            structure_drift=target.structure_delta,
+            normalized_structural_drift=drift
         )
