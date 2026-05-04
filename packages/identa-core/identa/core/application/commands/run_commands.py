@@ -24,6 +24,13 @@ class RunCommandHandler:
         self.storage = storage
         self.exporter = exporter
 
+    def handle(self, cmd: Command) -> Any:
+        if isinstance(cmd, StartRunCommand):
+            return self.handle_start_run(cmd)
+        elif isinstance(cmd, FinishRunCommand):
+            return self.handle_finish_run(cmd)
+        raise ValueError(f"Unsupported command: {type(cmd)}")
+
     def handle_start_run(self, cmd: StartRunCommand) -> Run:
         run = Run(
             id=cmd.id,
