@@ -1,7 +1,13 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Literal
+from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict
 from identa.core.domain.exceptions import RunAlreadyCompletedError
+
+class RunStatus(str, Enum):
+    RUNNING = "running"
+    FINISHED = "finished"
+    FAILED = "failed"
 
 class Workspace(BaseModel):
     id: str
@@ -59,7 +65,7 @@ class Run(BaseModel):
     parent_run_id: Optional[str] = None
     params: Dict[str, Any] = Field(default_factory=dict)
     tags: Dict[str, Any] = Field(default_factory=dict)
-    status: str # "running" | "finished" | "failed"
+    status: RunStatus # "running" | "finished" | "failed"
     started_at: datetime
     ended_at: Optional[datetime] = None
     evaluation_mode: str
@@ -69,18 +75,18 @@ class Run(BaseModel):
     def mark_completed(self):
         """Transitions the run to 'finished' state."""
         self._ensure_not_completed()
-        self.status = "finished"
+        self.status = RunStatus.FINISHED
         self.ended_at = datetime.now(timezone.utc)
 
     def fail(self, reason: str):
         """Transitions the run to 'failed' state and logs the reason."""
         self._ensure_not_completed()
-        self.status = "failed"
+        self.status = RunStatus.FAILED
         self.ended_at = datetime.now(timezone.utc)
         self.tags["failure_reason"] = reason
 
     def _ensure_not_completed(self):
-        if self.status in ("finished", "failed"):
+        if self.status in (RunStatus.FINISHED, RunStatus.FAILED):
             raise RunAlreadyCompletedError(self.id)
 
 class Baseline(BaseModel):
