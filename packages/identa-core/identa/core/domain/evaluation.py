@@ -69,8 +69,18 @@ class EvaluationEngine:
         structure: Optional[AgentStructure] = None,
         metrics: Optional[List[Union[str, MetricSpec]]] = None,
         mode: str = "controlled",
-        baseline_texts: Optional[List[str]] = None
+        baseline_texts: Optional[List[str]] = None,
+        drift_mode: str = "standard"
     ) -> EvaluationResult:
+        # [Inside evaluate]
+        # Branching logic for drift_mode
+        if drift_mode == "vanguard":
+            # Initialize/Run advanced models
+            pass
+        elif drift_mode == "standard":
+            # Standard stats
+            pass
+        # ... logic ...
         per_test_results = []
         aggregates = {}
         trace_refs = []
