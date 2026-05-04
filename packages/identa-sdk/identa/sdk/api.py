@@ -2,7 +2,7 @@ import uuid
 import contextvars
 from datetime import datetime, timezone
 from typing import Any, List, Optional, Union, Dict, Callable
-from identa.core.domain.models import Workspace, Run, MetricSpec
+from identa.core.domain.models import Workspace, Run, MetricSpec, RunStatus
 from identa.core.domain.evaluation import EvaluationEngine
 from identa.core.domain.metrics import ExactMatchMetric, LatencyMetric
 from identa.core.domain.results import EvaluationResult
@@ -92,6 +92,9 @@ class IdentaClient:
     def evaluate(self, agent: Any, suite: List[Dict[str, Any]], run_id: str, **kwargs):
         return self.engine.evaluate(agent, suite, run_id, **kwargs)
 
+    def execute(self, command: Union[Command, Query]) -> Any:
+        return execute(command)
+
 # ContextVar for thread-safe client access
 _client_var: contextvars.ContextVar[Optional[IdentaClient]] = contextvars.ContextVar(
     'identa_client', default=None
@@ -117,11 +120,14 @@ class RunContext:
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
         """Finalize the run: mark finished or failed and persist the update."""
-        status = "failed" if exc_type is not None else "finished"
-        self._client.run_handler.handle_finish_run(
-            FinishRunCommand(run_id=self.run.id, status=status)
-        )
-        return False  # Never suppress exceptions.
+        status = RunStatus.FAILED if exc_type is not None else RunStatus.FINISHED
+        try:
+            self._client.execute(FinishRunCommand(run_id=self.run.id, status=status))
+        except Exception as persistence_error:
+            # Log error: Failed to persist run closure.
+            if exc_type is None:
+                raise persistence_error # Re-raise if no prior exception existed
+        return False # Do not swallow the original exception
 
     def log_params(self, params: Dict[str, Any]) -> None:
         """Attach key-value parameters to this run (persisted immediately)."""
