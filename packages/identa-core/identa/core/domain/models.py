@@ -4,6 +4,11 @@ from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict
 from identa.core.domain.exceptions import RunAlreadyCompletedError
 
+class RunStatus(str, Enum):
+    RUNNING = "running"
+    FINISHED = "finished"
+    FAILED = "failed"
+
 class DriftEvaluationMode(str, Enum):
     STANDARD = "standard"
     VANGUARD = "vanguard"

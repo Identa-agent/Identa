@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime
-from identa.core.domain.models import Workspace, Run, MetricSpec
+from identa.core.domain.models import Workspace, Run, MetricSpec, RunStatus
 from identa.core.domain.structure import AgentStructure, AgentNode, AgentEdge
 from identa.core.domain.tracing import Span, SpanMetadata, SpanTiming
 
@@ -15,7 +15,7 @@ def test_run_creation():
         id="run_1",
         workspace_id="ws_1",
         name="Test Run",
-        status="running",
+        status=RunStatus.RUNNING,
         started_at=now,
         evaluation_mode="controlled"
     )
