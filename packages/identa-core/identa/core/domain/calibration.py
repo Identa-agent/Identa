@@ -1,9 +1,40 @@
-from typing import Any, Dict, List, Callable
+from typing import Any, Dict, List, Callable, Tuple
 from identa.core.domain.results import EvaluationResult
 
 class CalibrationEngine:
-    def __init__(self, evaluator: Callable):
+    def __init__(self, evaluator: Callable = None):
         self.evaluator = evaluator
+
+    @staticmethod
+    def optimize_threshold(y_true: List[int], y_scores: List[float]) -> float:
+        """Finds the threshold that maximizes F1-Score."""
+        thresholds = sorted(list(set(y_scores)))
+        best_threshold = 0.0
+        best_f1 = -1.0
+        
+        for t in thresholds:
+            tp = 0
+            fp = 0
+            fn = 0
+            for i, score in enumerate(y_scores):
+                pred = 1 if score >= t else 0
+                actual = y_true[i]
+                if pred == 1 and actual == 1:
+                    tp += 1
+                elif pred == 1 and actual == 0:
+                    fp += 1
+                elif pred == 0 and actual == 1:
+                    fn += 1
+            
+            precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+            recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+            f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+            
+            if f1 > best_f1:
+                best_f1 = f1
+                best_threshold = t
+                
+        return best_threshold
 
     def calibrate(
         self,
