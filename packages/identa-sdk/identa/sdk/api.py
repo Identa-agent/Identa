@@ -253,17 +253,9 @@ def execute(command: Union[Command, Query]):
     """
     registry = get_registry()
     handler = registry.get_handler(type(command))
-    
-    # Map command to the correct handle method
-    if isinstance(command, CreateWorkspaceCommand):
-        return handler.handle_create_workspace(command)
-    elif isinstance(command, StartRunCommand):
-        return handler.handle_start_run(command)
-    elif isinstance(command, FinishRunCommand):
-        return handler.handle_finish_run(command)
-    elif isinstance(command, GetRunQuery):
-        return handler.handle_get_run(command)
-    elif isinstance(command, ListRunsQuery):
-        return handler.handle_list_runs(command)
+
+    if hasattr(handler, 'handle'):
+        return handler.handle(command)
     else:
-        raise ValueError(f"Unsupported command/query type: {type(command)}")
+        # Fallback for handlers not yet refactored
+        raise NotImplementedError(f"Handler for {type(command)} must implement 'handle(cmd)'")
