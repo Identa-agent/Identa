@@ -10,6 +10,7 @@ class AgentNode(BaseModel):
     inputs: List[str] = Field(default_factory=list)
     outputs: List[str] = Field(default_factory=list)
     id_stability: Literal["stable", "ephemeral"]
+    weight: float = 1.0
 
 class AgentEdge(BaseModel):
     from_node: str
@@ -44,8 +45,20 @@ class ObservedStructureDelta(BaseModel):
         """Analyzes results to find differences between intended and observed structure."""
         
         drift = 0.0
-        if total_unique_nodes > 0:
-            drift = (len(unexpected_nodes) + len(missing_nodes)) / total_unique_nodes
+        if intended:
+            node_weights = {n.id: n.weight for n in intended.nodes}
+        else:
+            node_weights = {}
+            
+        added_weight = sum(node_weights.get(nid, 1.0) for nid in unexpected_nodes)
+        removed_weight = sum(node_weights.get(nid, 1.0) for nid in missing_nodes)
+        
+        total_weights = sum(n.weight for n in intended.nodes) if intended else 0.0
+        # If nodes are added that weren't in the intended graph, we should consider them in total_weights too?
+        # For simplicity, we just use the intended weight as the normalization factor.
+        
+        if total_weights > 0:
+            drift = (added_weight + removed_weight) / total_weights
             
         return cls(
             missing_nodes=missing_nodes,
