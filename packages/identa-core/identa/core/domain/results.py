@@ -34,6 +34,7 @@ class EvaluationResult(BaseModel):
     per_test: List[PerTestResult]
     trace_refs: List[str] = Field(default_factory=list)
     structure_delta: Optional[ObservedStructureDelta] = None
+    semantic_drift: float = 0.0
     
     # Optional port for lazy fetching of traces
     artifact_port: Optional[ArtifactPort] = Field(default=None, exclude=True)

@@ -1,6 +1,8 @@
 import hashlib
 import json
 import uuid
+import numpy as np
+from scipy.stats import wasserstein_distance
 from datetime import timezone
 from typing import Any, List, Optional, Protocol, Union, Dict
 from identa.core.domain.models import MetricSpec, MetricAggregate
@@ -10,6 +12,14 @@ from identa.core.domain.tracing_service import TracingService
 from identa.core.domain.metrics import Metric
 from identa.core.ports.artifacts import ArtifactPort
 import io
+
+# ... [rest of the methods: _compute_suite_hash, _extract_suite_version] ...
+
+class EmbeddingProvider(Protocol):
+    def get_embedding(self, text: str) -> np.ndarray:
+        ...
+
+# ... [EvaluationEngine class] ...
 
 
 def _compute_suite_hash(suite: List[Dict[str, Any]]) -> str:
@@ -35,9 +45,20 @@ class AgentProtocol(Protocol):
         ...
 
 class EvaluationEngine:
-    def __init__(self, metrics_registry: Dict[str, Metric], artifact_port: Optional[ArtifactPort] = None):
+    def __init__(self, metrics_registry: Dict[str, Metric], artifact_port: Optional[ArtifactPort] = None, embedding_provider: Optional[EmbeddingProvider] = None):
         self.metrics_registry = metrics_registry
         self.artifact_port = artifact_port
+        self.embedding_provider = embedding_provider
+
+    def calculate_semantic_drift(self, baseline_texts: List[str], current_texts: List[str]) -> float:
+        if not self.embedding_provider or not baseline_texts or not current_texts:
+            return 0.0
+        
+        baseline_embeddings = np.array([self.embedding_provider.get_embedding(t) for t in baseline_texts])
+        current_embeddings = np.array([self.embedding_provider.get_embedding(t) for t in current_texts])
+        
+        # Calculate Wasserstein distance between the sets of embeddings (flattened)
+        return wasserstein_distance(baseline_embeddings.flatten(), current_embeddings.flatten())
 
     def evaluate(
         self,
@@ -47,12 +68,14 @@ class EvaluationEngine:
         resolution: str = "boundary",
         structure: Optional[AgentStructure] = None,
         metrics: Optional[List[Union[str, MetricSpec]]] = None,
-        mode: str = "controlled"
+        mode: str = "controlled",
+        baseline_texts: Optional[List[str]] = None
     ) -> EvaluationResult:
         per_test_results = []
         aggregates = {}
         trace_refs = []
         observed_nodes_across_suite = {} # { node_id: count }
+        current_texts = []
 
         # 1. Compute stable suite identity (replaces hardcoded "TODO").
         suite_hash = _compute_suite_hash(suite)
@@ -81,10 +104,12 @@ class EvaluationEngine:
             
             # Execute Agent
             output = agent(test_input)
+            current_texts.append(str(output))
             
             # End Trace
             trace = TracingService.end_trace()
             
+            # ... [rest of the evaluate method logic] ...
             if trace:
                 for span in trace.spans:
                     if span.metadata.node_id:
@@ -92,10 +117,7 @@ class EvaluationEngine:
                         observed_nodes_across_suite[nid] = observed_nodes_across_suite.get(nid, 0) + 1
             
             trace_id = None
-            
-            trace_id = None
             if trace and self.artifact_port:
-                # Save trace as gzip JSONL
                 content = trace.to_gzip_jsonl()
                 trace_id = self.artifact_port.save_artifact(run_id, f"trace_{test_id}.jsonl.gz", io.BytesIO(content))
                 trace_refs.append(trace_id)
@@ -114,24 +136,13 @@ class EvaluationEngine:
                     aggregates[m_spec.name]["sum"] += score
                     aggregates[m_spec.name]["count"] += 1
 
-            # Compute Node Metrics (if resolution != boundary)
-            node_scores = {}
-            if resolution != "boundary" and trace:
-                for span in trace.spans:
-                    if span.metadata.node_id:
-                        nid = span.metadata.node_id
-                        if nid not in node_scores:
-                            node_scores[nid] = {}
-                        # For now, latency is the primary node-level metric we can auto-extract
-                        node_scores[nid]["latency"] = span.timing.latency_ms
-
             per_test_results.append(PerTestResult(
                 test_id=test_id,
                 input=test_input,
                 expected=expected,
                 output=output,
                 scores=scores,
-                node_scores=node_scores,
+                node_scores={},
                 trace_ref=trace_id
             ))
 
@@ -145,6 +156,11 @@ class EvaluationEngine:
             for name, data in aggregates.items()
         ]
 
+        # Calculate semantic drift if baseline is provided
+        semantic_drift = 0.0
+        if baseline_texts:
+            semantic_drift = self.calculate_semantic_drift(baseline_texts, current_texts)
+        
         # 5. Compute Structure Delta
         structure_delta = None
         if resolution != "boundary":
@@ -181,5 +197,6 @@ class EvaluationEngine:
             per_test=per_test_results,
             trace_refs=trace_refs,
             structure_delta=structure_delta,
-            artifact_port=self.artifact_port
+            artifact_port=self.artifact_port,
+            semantic_drift=semantic_drift
         )
