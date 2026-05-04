@@ -42,11 +42,19 @@ class TraceArtifact(BaseModel):
     structure_hash: str
     spans: List[Span]
 
-    def to_gzip_jsonl(self) -> bytes:
-        """Serializes spans to JSONL and returns a gzip-compressed byte stream."""
-        buf = io.BytesIO()
-        with gzip.GzipFile(fileobj=buf, mode='wb') as f:
-            for span in self.spans:
-                line = span.model_dump_json() + "\n"
-                f.write(line.encode('utf-8'))
-        return buf.getvalue()
+    def infer_causal_bottleneck(self) -> Optional[str]:
+        """Simple causal inference: Identify node with highest average latency."""
+        node_latencies: Dict[str, List[float]] = {}
+        for span in self.spans:
+            if span.metadata.node_id:
+                nid = span.metadata.node_id
+                if nid not in node_latencies:
+                    node_latencies[nid] = []
+                node_latencies[nid].append(span.timing.latency_ms)
+        
+        if not node_latencies:
+            return None
+            
+        # Return node ID with the highest average latency
+        avg_latencies = {nid: sum(latencies)/len(latencies) for nid, latencies in node_latencies.items()}
+        return max(avg_latencies, key=avg_latencies.get)
