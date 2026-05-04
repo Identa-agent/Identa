@@ -10,6 +10,7 @@ class ComparisonResult(BaseModel):
     regressions: List[str]           # [ metric_name ]
     structure_drift: Optional[ObservedStructureDelta] = None
     normalized_structural_drift: float = 0.0
+    behavioral_drift: float = 0.0
 
     def report(self) -> str:
         """Returns a human-readable report of the comparison."""
@@ -31,6 +32,7 @@ class ComparisonResult(BaseModel):
             lines.append("-" * 60)
             lines.append("Structure Drift Detected!")
             lines.append(f"  Normalized structural drift: {self.normalized_structural_drift:.2%}")
+            lines.append(f"  Behavioral drift (PSI): {self.behavioral_drift:.4f}")
             lines.append(f"  Added nodes: {len(self.structure_drift.unexpected_nodes)}")
             lines.append(f"  Removed nodes: {len(self.structure_drift.missing_nodes)}")
             
@@ -63,8 +65,15 @@ class ComparisonEngine:
                     regressions.append(m_name)
         
         drift = 0.0
+        psi = 0.0
         if target.structure_delta:
             drift = target.structure_delta.normalized_structural_drift
+            if source.structure_delta:
+                from identa.core.domain.metrics import PopulationStabilityIndex
+                psi = PopulationStabilityIndex.calculate_psi(
+                    source.structure_delta.observed_frequency,
+                    target.structure_delta.observed_frequency
+                )
         
         return ComparisonResult(
             source_run_id=source.run_id,
@@ -72,5 +81,6 @@ class ComparisonEngine:
             metric_deltas=metric_deltas,
             regressions=regressions,
             structure_drift=target.structure_delta,
-            normalized_structural_drift=drift
+            normalized_structural_drift=drift,
+            behavioral_drift=psi
         )
