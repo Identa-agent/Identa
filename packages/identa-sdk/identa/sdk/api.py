@@ -30,20 +30,30 @@ from identa.core.application.queries.run_queries import (
 from identa.core.domain.models import ReproducibilityBundle
 from identa.core.ports.storage import StoragePort
 from identa.core.ports.exporter import ExporterPort
+from identa.core.ports.artifacts import ArtifactPort
 from identa.sdk.registry import AgentRegistry, get_registry
 from identa.sdk.adapters.base import WrappedAgent
 from identa.sdk.suites import load_suite
 import identa.sdk.adapters  # noqa: F401  triggers registration
 
 class IdentaClient:
-    def __init__(self, workspace_id: str, db_url: str = "sqlite:///identa.db", artifact_path: str = "artifacts", tracking_uri: Optional[str] = None):
-        self.storage = SQLiteStorageAdapter(db_url)
-        self.artifacts = LocalArtifactAdapter(artifact_path)
+    def __init__(
+        self, 
+        workspace_id: str, 
+        db_url: str = "sqlite:///identa.db", 
+        artifact_path: str = "artifacts", 
+        tracking_uri: Optional[str] = None,
+        storage: Optional[StoragePort] = None,
+        artifacts: Optional[ArtifactPort] = None,
+        exporter: Optional[ExporterPort] = None
+    ):
+        self.storage = storage or SQLiteStorageAdapter(db_url)
+        self.artifacts = artifacts or LocalArtifactAdapter(artifact_path)
         self.workspace_id = workspace_id
         
         # Initialize exporter if available
-        self.exporter: Optional[ExporterPort] = None
-        if HAS_MLFLOW:
+        self.exporter = exporter
+        if self.exporter is None and HAS_MLFLOW:
             self.exporter = MLflowExporter(tracking_uri=tracking_uri)
 
         # Initialize registries
