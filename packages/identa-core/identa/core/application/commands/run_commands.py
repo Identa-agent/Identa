@@ -1,3 +1,4 @@
+from pydantic import Field
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from identa.core.domain.models import Run
@@ -9,8 +10,8 @@ class StartRunCommand(Command):
     id: str
     workspace_id: str
     name: str
-    params: Dict[str, Any] = {}
-    tags: Dict[str, Any] = {}
+    params: Dict[str, Any] = Field(default_factory=dict)
+    tags: Dict[str, Any] = Field(default_factory=dict)
     evaluation_mode: str = "controlled"
 
 
