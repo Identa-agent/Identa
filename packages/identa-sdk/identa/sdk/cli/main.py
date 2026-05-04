@@ -109,5 +109,11 @@ def reproduce(ctx, run_id):
         else:
             click.echo(f"✅ {fw} version matches ({version}).")
 
-if __name__ == '__main__':
-    cli()
+@cli.command()
+@click.option('--workspace', required=True, help='Workspace ID')
+@click.option('--drift-mode', type=click.Choice(['standard', 'vanguard', 'hybrid']), default='standard', help='Drift calculation track')
+@click.argument('suite_file')
+def run(workspace, drift_mode, suite_file):
+    """Run an evaluation suite with a specific drift mode."""
+    click.echo(f"Running suite {suite_file} in mode {drift_mode}...")
+    # Implementation would call the client here
