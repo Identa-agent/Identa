@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import create_engine, Column, String, DateTime, Text, ForeignKey, Integer, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker, declarative_base
-from identa.core.domain.models import Workspace, Run, Baseline, ReproducibilityBundle
+from identa.core.domain.models import Workspace, Run, Baseline, ReproducibilityBundle, RunStatus
 from identa.core.domain.results import EvaluationResult
 from identa.core.domain.exceptions import StorageError, WorkspaceNotFoundError
 from identa.core.ports.storage import StoragePort
@@ -286,3 +286,35 @@ class SQLiteStorageAdapter(StoragePort):
                 return None
         except (SQLAlchemyError, sqlite3.Error) as e:
             raise StorageError(f"Failed to get reproducibility bundle {bundle_id}: {e}")
+
+    def update_run_status(self, run_id: str, new_status: RunStatus, reason: Optional[str] = None) -> bool:
+        """Atomic update to prevent race conditions."""
+        try:
+            with self.Session() as session:
+                # Use raw SQL for atomic update with optimistic locking/condition
+                stmt = text("""
+                    UPDATE runs 
+                    SET status = :new_status, ended_at = :ended_at
+                    WHERE id = :run_id AND status = 'running'
+                """)
+                
+                params = {
+                    "new_status": new_status.value,
+                    "ended_at": datetime.now(),
+                    "run_id": run_id
+                }
+                
+                result = session.execute(stmt, params)
+                
+                if reason and result.rowcount > 0:
+                    # Update tags if reason is provided
+                    model = session.query(RunModel).filter_by(id=run_id).first()
+                    if model:
+                        tags = json.loads(model.tags)
+                        tags["failure_reason"] = reason
+                        model.tags = json.dumps(tags)
+                
+                session.commit()
+                return result.rowcount > 0
+        except (SQLAlchemyError, sqlite3.Error) as e:
+            raise StorageError(f"Failed to update run status for {run_id}: {e}")
