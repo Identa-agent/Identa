@@ -1,7 +1,7 @@
 from pydantic import Field
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-from identa.core.domain.models import Run
+from identa.core.domain.models import Run, RunStatus
 from identa.core.ports.storage import StoragePort
 from identa.core.ports.exporter import ExporterPort
 from identa.core.application.commands.base import Command
@@ -38,7 +38,7 @@ class RunCommandHandler:
             name=cmd.name,
             params=cmd.params,
             tags=cmd.tags,
-            status="running",
+            status=RunStatus.RUNNING,
             started_at=datetime.now(timezone.utc),
             evaluation_mode=cmd.evaluation_mode
         )
@@ -46,13 +46,7 @@ class RunCommandHandler:
         return run
 
     def handle_finish_run(self, cmd: FinishRunCommand) -> None:
-        run = self.storage.get_run(cmd.run_id)
-        if run is None:
-            return
-            
-        if cmd.status == "failed":
-            run.fail("Run manually marked as failed via command.")
-        else:
-            run.mark_completed()
-            
-        self.storage.save_run(run)
+        new_status = RunStatus.FAILED if cmd.status == "failed" else RunStatus.FINISHED
+        reason = "Run manually marked as failed via command." if cmd.status == "failed" else None
+        
+        self.storage.update_run_status(cmd.run_id, new_status, reason=reason)
