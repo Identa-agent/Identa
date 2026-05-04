@@ -47,8 +47,8 @@ def test_pydantic_ai_agent_not_mutated():
     with identa.start_run("mutation_check"):
         identa.evaluate(agent=agent, suite=[{"input": "hi", "expected": "x"}])
 
-    assert agent.run is original_run, "agent.run was monkeypatched"
-    assert agent.run_sync is original_run_sync, "agent.run_sync was monkeypatched"
+    assert agent.run.__func__ is original_run.__func__, "agent.run was monkeypatched"
+    assert agent.run_sync.__func__ is original_run_sync.__func__, "agent.run_sync was monkeypatched"
 
 
 def test_pydantic_ai_inspect_structure():

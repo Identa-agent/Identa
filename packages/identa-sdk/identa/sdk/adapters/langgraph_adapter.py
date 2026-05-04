@@ -13,10 +13,21 @@ except ImportError:
 
 class IdentaLangGraphCallback(BaseCallbackHandler):
     def __init__(self):
+        if BaseCallbackHandler is not object:
+            super().__init__()
         self.span_ids = {}
+        # Ensure common LangChain callback attributes exist
+        self.raise_error = False
+        self.ignore_chain = False
+        self.ignore_llm = False
+        self.ignore_tool = False
+        self.ignore_retriever = False
 
     def on_chain_start(self, serialized: dict, inputs: dict, **kwargs) -> None:
-        name = serialized.get("name", "node")
+        name = "node"
+        if serialized:
+            name = serialized.get("name", "node")
+            
         # Avoid double-tracing the root agent call if it's already traced by LangGraphAdapter.wrap
         if name == "LangGraph":
             return
@@ -24,7 +35,7 @@ class IdentaLangGraphCallback(BaseCallbackHandler):
         run_id = str(kwargs.get("run_id", name))
         sid = TracingService.start_span(
             name=name,
-            kind="node",
+            kind="chain",
             metadata=SpanMetadata(node_id=name)
         )
         self.span_ids[run_id] = sid
