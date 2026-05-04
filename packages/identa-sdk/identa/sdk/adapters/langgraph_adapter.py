@@ -1,10 +1,15 @@
-# packages/identa-sdk/identa/sdk/adapters/langgraph_adapter.py
-from typing import Any
-import hashlib, json
+import hashlib
+import json
+import logging
+import threading
+from typing import Any, Dict, Optional
+
 from identa.sdk.adapters.base import BaseAdapter, WrappedAgent
 from identa.core.domain.tracing_service import TracingService
 from identa.core.domain.tracing import SpanMetadata
 from identa.core.domain.structure import AgentStructure, AgentNode, AgentEdge
+
+logger = logging.getLogger(__name__)
 
 try:
     from langchain.callbacks.base import BaseCallbackHandler
@@ -15,8 +20,9 @@ class IdentaLangGraphCallback(BaseCallbackHandler):
     def __init__(self):
         if BaseCallbackHandler is not object:
             super().__init__()
-        self.span_ids = {}
-        # Ensure common LangChain callback attributes exist
+        self.span_ids: Dict[str, str] = {}
+        self._lock = threading.Lock()  # FIX: Thread safety for shared state
+        
         self.raise_error = False
         self.ignore_chain = False
         self.ignore_llm = False
@@ -24,11 +30,8 @@ class IdentaLangGraphCallback(BaseCallbackHandler):
         self.ignore_retriever = False
 
     def on_chain_start(self, serialized: dict, inputs: dict, **kwargs) -> None:
-        name = "node"
-        if serialized:
-            name = serialized.get("name", "node")
+        name = serialized.get("name", "node") if serialized else "node"
             
-        # Avoid double-tracing the root agent call if it's already traced by LangGraphAdapter.wrap
         if name == "LangGraph":
             return
         
@@ -38,17 +41,20 @@ class IdentaLangGraphCallback(BaseCallbackHandler):
             kind="chain",
             metadata=SpanMetadata(node_id=name)
         )
-        self.span_ids[run_id] = sid
+        with self._lock:
+            self.span_ids[run_id] = sid
 
     def on_chain_end(self, response: Any, **kwargs: Any) -> None:
         run_id = str(kwargs.get("run_id", "node"))
-        sid = self.span_ids.pop(run_id, None)
+        with self._lock:
+            sid = self.span_ids.pop(run_id, None)
         if sid:
             TracingService.end_span(sid)
 
     def on_chain_error(self, error: BaseException, **kwargs: Any) -> None:
         run_id = str(kwargs.get("run_id", "node"))
-        sid = self.span_ids.pop(run_id, None)
+        with self._lock:
+            sid = self.span_ids.pop(run_id, None)
         if sid:
             TracingService.end_span(sid)
 
@@ -56,29 +62,24 @@ class LangGraphAdapter(BaseAdapter):
     framework_name = "langgraph"
 
     def inspect(self, graph: Any) -> AgentStructure:
-        # Use LangGraph's get_graph() if available to extract nodes and edges
+        nodes, edges = [], []
         try:
             drawable = graph.get_graph()
-            nodes = []
             for node in drawable.nodes.values():
-                # Map LangGraph node types to Identa types if possible
                 nodes.append(AgentNode(
-                    id=node.id, 
-                    type="custom", 
-                    name=node.name, 
-                    id_stability="stable"
+                    id=node.id, type="custom", name=node.name, id_stability="stable"
                 ))
-            
-            edges = []
             for edge in drawable.edges:
                 edges.append(AgentEdge(from_node=edge.source, to_node=edge.target))
-        except (AttributeError, Exception):
-            # Fallback to minimal extraction from graph.nodes
-            nodes = [
-                AgentNode(id=name, type="custom", name=name, id_stability="stable")
-                for name in graph.nodes.keys()
-            ]
-            edges = []
+        except AttributeError as e:
+            logger.debug("Failed to extract graph via get_graph, falling back to basic extraction: %s", e)
+            if hasattr(graph, "nodes") and isinstance(graph.nodes, dict):
+                nodes = [
+                    AgentNode(id=name, type="custom", name=name, id_stability="stable")
+                    for name in graph.nodes.keys()
+                ]
+        except Exception as e:
+            logger.error("Unexpected error during graph inspection: %s", e, exc_info=True)
 
         struct_data = {
             "nodes": sorted(n.id for n in nodes),
@@ -88,28 +89,25 @@ class LangGraphAdapter(BaseAdapter):
         return AgentStructure(id=version_hash[:16], version_hash=version_hash, nodes=nodes, edges=edges)
 
     def wrap(self, graph: Any) -> WrappedAgent:
-        # No monkeypatch. We capture the bound method and call it through the proxy.
         original_invoke = graph.invoke
         
-        def traced(input_value: Any, config: Any = None, **kwargs: Any) -> Any:
+        def traced(input_value: Any, config: Optional[Dict[str, Any]] = None, **kwargs: Any) -> Any:
             span_id = TracingService.start_span(
                 name="langgraph_invoke",
                 kind="agent",
                 metadata=SpanMetadata(),
             )
             
-            # Prepare config with Identa callback
-            if config is None:
-                config = {}
+            # FIX: Deep-ish copy to prevent mutating the caller's config
+            safe_config = dict(config) if config else {}
+            callbacks = safe_config.get("callbacks", [])
             
-            callbacks = config.get("callbacks", [])
             if not any(isinstance(c, IdentaLangGraphCallback) for c in callbacks):
-                # Copy to avoid mutating user's config list
-                callbacks = list(callbacks) + [IdentaLangGraphCallback()]
-                config["callbacks"] = callbacks
+                safe_config["callbacks"] = list(callbacks) + [IdentaLangGraphCallback()]
                 
             try:
-                return original_invoke(input_value, config=config, **kwargs)
+                return original_invoke(input_value, config=safe_config, **kwargs)
             finally:
                 TracingService.end_span(span_id)
+                
         return WrappedAgent(callable=traced, original=graph, framework_name=self.framework_name)

@@ -1,7 +1,9 @@
-import json
+import logging
 from typing import Optional
 from identa.core.ports.exporter import ExporterPort
 from identa.core.domain.results import EvaluationResult
+
+logger = logging.getLogger(__name__)
 
 try:
     import mlflow
@@ -20,19 +22,18 @@ class MLflowExporter(ExporterPort):
             mlflow.set_tracking_uri(tracking_uri)
 
     def export_result(self, result: EvaluationResult) -> str:
-        """Exports metrics and metadata to MLflow."""
-        print(f"📦 Exporting run {result.run_id} to MLflow...")
+        logger.info("📦 Exporting run %s to MLflow...", result.run_id)
         
-        with mlflow.start_run(run_name=result.run_id):
-            # Log metrics
+        # FIX: Capture the ActiveRun object from the context manager yield
+        with mlflow.start_run(run_name=result.run_id) as run:
             for agg in result.aggregates:
                 mlflow.log_metric(agg.metric_name, agg.value)
             
-            # Log parameters and tags if available
             mlflow.set_tag("suite_hash", result.suite_hash)
             
-        # Return the MLflow run URL if possible, or a mock
-        run = mlflow.active_run()
-        if run:
-            return f"mlflow-run://{run.info.run_id}"
+            # Extract run_id while the context is still active
+            mlflow_run_id = run.info.run_id if run else None
+            
+        if mlflow_run_id:
+            return f"mlflow-run://{mlflow_run_id}"
         return f"https://mlflow.internal/runs/{result.run_id}"

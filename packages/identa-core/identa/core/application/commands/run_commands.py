@@ -1,10 +1,15 @@
+import logging
+from typing import Any, Dict, Optional, Literal
 from pydantic import Field
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from functools import singledispatchmethod
+
 from identa.core.domain.models import Run, RunStatus
 from identa.core.ports.storage import StoragePort
 from identa.core.ports.exporter import ExporterPort
 from identa.core.application.commands.base import Command
+
+logger = logging.getLogger(__name__)
 
 class StartRunCommand(Command):
     id: str
@@ -14,24 +19,22 @@ class StartRunCommand(Command):
     tags: Dict[str, Any] = Field(default_factory=dict)
     evaluation_mode: str = "controlled"
 
-
 class FinishRunCommand(Command):
     run_id: str
-    status: str = "finished"  # "finished" | "failed"
+    status: Literal["finished", "failed"] = "finished"
 
 class RunCommandHandler:
     def __init__(self, storage: StoragePort, exporter: Optional[ExporterPort] = None):
         self.storage = storage
+        # TODO: Remove exporter if it continues to be unused, or implement its logic
         self.exporter = exporter
 
+    @singledispatchmethod
     def handle(self, cmd: Command) -> Any:
-        if isinstance(cmd, StartRunCommand):
-            return self.handle_start_run(cmd)
-        elif isinstance(cmd, FinishRunCommand):
-            return self.handle_finish_run(cmd)
         raise ValueError(f"Unsupported command: {type(cmd)}")
 
-    def handle_start_run(self, cmd: StartRunCommand) -> Run:
+    @handle.register
+    def _(self, cmd: StartRunCommand) -> Run:
         run = Run(
             id=cmd.id,
             workspace_id=cmd.workspace_id,
@@ -42,11 +45,20 @@ class RunCommandHandler:
             started_at=datetime.now(timezone.utc),
             evaluation_mode=cmd.evaluation_mode
         )
-        self.storage.save_run(run)
+        try:
+            self.storage.save_run(run)
+        except Exception as e:
+            logger.error(f"Storage failure while saving StartRunCommand for run {run.id}: {e}", exc_info=True)
+            raise
         return run
 
-    def handle_finish_run(self, cmd: FinishRunCommand) -> None:
+    @handle.register
+    def _(self, cmd: FinishRunCommand) -> None:
         new_status = RunStatus.FAILED if cmd.status == "failed" else RunStatus.FINISHED
         reason = "Run manually marked as failed via command." if cmd.status == "failed" else None
         
-        self.storage.update_run_status(cmd.run_id, new_status, reason=reason)
+        try:
+            self.storage.update_run_status(cmd.run_id, new_status, reason=reason)
+        except Exception as e:
+            logger.error(f"Storage failure while updating FinishRunCommand for run {cmd.run_id}: {e}", exc_info=True)
+            raise
