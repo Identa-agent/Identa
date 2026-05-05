@@ -67,17 +67,32 @@ with identa.start_run("gpt-4-baseline"):
     )
 ```
 
-## CLI Usage
+## Drift Evaluation Modes
 
-The Identa CLI allows you to inspect runs and compare baselines:
+Identa now supports two evaluation tracks for drift detection:
+
+- **Standard**: Industry standard statistical drift detection (Normalized Structural Drift + PSI Behavioral Drift).
+- **Vanguard**: State-of-the-art semantic/causal detection (Semantic Embedding Drift + LLM-as-a-Judge + Causal Bottleneck Analysis).
+
+You can switch between them when evaluating your agent:
+
+```python
+# Vanguard track example
+results = identa.evaluate(
+    agent=my_agent,
+    suite=my_suite,
+    drift_mode="vanguard"
+)
+```
+
+Or via the CLI:
 
 ```bash
-# List all runs
-identa runs list --workspace travel_agent
-
-# Inspect a specific run
-identa runs show <run_id>
+identa run --drift-mode vanguard my_suite.toml
 ```
+
+## CLI Usage
+...
 
 ## Build & Development
 

@@ -22,9 +22,27 @@ Identa Core is designed to be framework-agnostic and side-effect free. It enforc
 - **Migration Engine**: Logic to validate and apply model-binding swaps.
 - **Reproduction Engine**: Logic to replay experiments with structural drift detection.
 
+## Drift Analysis Tracks
+
+Identa Core supports two distinct evaluation pipelines:
+
+1. **Standard Track**: Robust, statistical observability.
+   - Normalized Structural Drift (Jaccard Similarity).
+   - Behavioral Drift (Smoothed PSI).
+   - Feature Weighting (MetricSpec.weight).
+
+2. **Vanguard Track**: State-of-the-art semantic/causal detection.
+   - Semantic Embedding Drift (Wasserstein Distance).
+   - LLM-as-a-Judge (Qualitative Drift scoring).
+   - Online Calibration (Dynamic Decision Boundaries).
+   - Causal Graph Inference (Root-Cause Bottleneck analysis).
+
+Configure your pipeline via `EvaluationConfig.drift_mode`.
+
 ## Development
 
 This package is managed by `uv`.
+...
 
 ```bash
 # Run unit tests
