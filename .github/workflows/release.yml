@@ -30,7 +30,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version-file: ".python-version"
+          # Point to the specific location of the .python-version file
+          python-version-file: "packages/identa-core/.python-version"
 
       - name: Inject Dynamic Version into pyproject.toml files
         run: |
