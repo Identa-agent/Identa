@@ -162,10 +162,13 @@ def start_run(name: str) -> RunContext:
     ))
     return RunContext(run, client)
 
-def evaluate(agent: Any, suite: List[Dict[str, Any]], **kwargs):
+def evaluate(agent: Any, suite: List[Dict[str, Any]], drift_mode: Optional[str] = None, **kwargs):
     client = get_client()
     if not client:
         raise ValueError("Call set_workspace first")
+    
+    if drift_mode:
+        kwargs["drift_mode"] = drift_mode
 
     # If user already passed a WrappedAgent (advanced use), skip detection.
     if isinstance(agent, WrappedAgent):
