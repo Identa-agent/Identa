@@ -13,7 +13,9 @@ dependencies = [
 
 [tool.hatch.version]
 source = "vcs"
-path = "../../"
+
+[tool.hatch.version.raw-options]
+root = "../.."
 
 [project.optional-dependencies]
 mlflow = ["mlflow>=2.10.0"]
