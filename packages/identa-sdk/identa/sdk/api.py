@@ -155,7 +155,8 @@ def start_run(name: str) -> RunContext:
         raise ValueError("Call set_workspace first")
 
     run_id = str(uuid.uuid4())
-    run = client.run_handler.handle_start_run(StartRunCommand(
+    # Correcting the call to the handler
+    run = client.run_handler.handle(StartRunCommand(
         id=run_id,
         workspace_id=client.workspace_id,
         name=name
