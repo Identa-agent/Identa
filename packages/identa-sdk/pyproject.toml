@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 dependencies = [
-    "identa-core>=0.4.9b4",
+    "identa-core",
     "click",
     "toml",
 ]
