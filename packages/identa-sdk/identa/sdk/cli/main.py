@@ -109,6 +109,11 @@ def reproduce(ctx, run_id):
         else:
             click.echo(f"✅ {fw} version matches ({version}).")
 
+from identa.sdk.api import evaluate, set_workspace
+from identa.sdk.suites import load_suite
+
+# ... existing code ...
+
 @cli.command()
 @click.option('--workspace', required=True, help='Workspace ID')
 @click.option('--drift-mode', type=click.Choice(['standard', 'vanguard', 'hybrid']), default='standard', help='Drift calculation track')
@@ -116,4 +121,11 @@ def reproduce(ctx, run_id):
 def run(workspace, drift_mode, suite_file):
     """Run an evaluation suite with a specific drift mode."""
     click.echo(f"Running suite {suite_file} in mode {drift_mode}...")
-    # Implementation would call the client here
+    
+    set_workspace(workspace)
+    suite = load_suite(suite_file)
+    
+    # Placeholder agent for demonstration/CLI
+    # In a real impl, user might need to specify agent via CLI as well
+    # For now, this is a skeleton
+    click.echo("⚠️ CLI execution requires agent specification - implementation pending.")
