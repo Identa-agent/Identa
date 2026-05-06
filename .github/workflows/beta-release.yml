@@ -1,12 +1,10 @@
-name: Release
+name: Beta Release
 
 on:
   push:
     tags:
-      - 'v*'
-      - '[0-9]+.[0-9]+.[0-9]+*'
-      - '!*b*'
-      - '!*beta*'
+      - '*b*'
+      - '*beta*'
 
 jobs:
   build:
@@ -31,9 +29,9 @@ jobs:
 
       - name: Inject Dynamic Version into pyproject.toml files
         run: |
-          # 1. Strip the 'v' from the git tag (works for v0.4.1b1 -> 0.4.1b1, or stays 0.4.1b1 if no v)
+          # 1. Strip the 'v' from the git tag
           VERSION=${GITHUB_REF_NAME#v}
-          echo "Preparing release for version: $VERSION"
+          echo "Preparing beta release for version: $VERSION"
 
           # 2. Run a safe, inline Python script to update the TOML files
           python -c "
