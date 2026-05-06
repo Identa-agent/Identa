@@ -7,9 +7,14 @@ on:
       - '*beta*'
 
 jobs:
-  build:
-    name: Build Packages
+  release:
+    name: Build and Publish Packages
     runs-on: ubuntu-latest
+    
+    # Required for PyPI's Trusted Publishing (OIDC)
+    permissions:
+      id-token: write 
+      contents: read
     
     steps:
       - name: Checkout repository
@@ -69,9 +74,20 @@ jobs:
         working-directory: packages/identa-core
         run: uv build
 
+      - name: Publish identa-core to PyPI
+        working-directory: packages/identa-core
+        run: uv publish
+
+      - name: Wait for PyPI propagation
+        run: sleep 30
+
       - name: Build identa-sdk
         working-directory: packages/identa-sdk
         run: uv build
+
+      - name: Publish identa-sdk to PyPI
+        working-directory: packages/identa-sdk
+        run: uv publish
 
       - name: Store identa-core artifacts
         uses: actions/upload-artifact@v4
@@ -86,40 +102,3 @@ jobs:
           name: identa-sdk-dist
           path: packages/identa-sdk/dist/
           retention-days: 1
-
-  publish:
-    name: Publish to PyPI
-    needs: build
-    runs-on: ubuntu-latest
-    
-    # Required for PyPI's Trusted Publishing (OIDC)
-    permissions:
-      id-token: write 
-      contents: read
-      
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-
-      - name: Download identa-core artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: identa-core-dist
-          path: packages/identa-core/dist/
-
-      - name: Download identa-sdk artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: identa-sdk-dist
-          path: packages/identa-sdk/dist/
-
-      - name: Publish identa-core to PyPI
-        working-directory: packages/identa-core
-        run: uv publish
-
-      - name: Publish identa-sdk to PyPI
-        working-directory: packages/identa-sdk
-        run: uv publish
