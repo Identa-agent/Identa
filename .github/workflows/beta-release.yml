@@ -51,18 +51,15 @@ jobs:
       id-token: write 
       contents: read
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
       - name: Download identa-core artifacts
         uses: actions/download-artifact@v4
         with:
           name: identa-core-dist
           path: packages/identa-core/dist/
       - name: Publish identa-core to PyPI
-        working-directory: packages/identa-core
-        run: uv publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/identa-core/dist/
 
   build-sdk:
     name: Build identa-sdk 🐍
@@ -113,15 +110,12 @@ jobs:
       id-token: write 
       contents: read
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
       - name: Download identa-sdk artifacts
         uses: actions/download-artifact@v4
         with:
           name: identa-sdk-dist
           path: packages/identa-sdk/dist/
       - name: Publish identa-sdk to PyPI
-        working-directory: packages/identa-sdk
-        run: uv publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/identa-sdk/dist/
