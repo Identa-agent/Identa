@@ -58,3 +58,12 @@ class TraceArtifact(BaseModel):
         # Return node ID with the highest average latency
         avg_latencies = {nid: sum(latencies)/len(latencies) for nid, latencies in node_latencies.items()}
         return max(avg_latencies, key=avg_latencies.get)
+
+    def to_gzip_jsonl(self) -> bytes:
+        """Serializes the trace spans to a gzipped JSON Lines format."""
+        out = io.BytesIO()
+        with gzip.GzipFile(fileobj=out, mode='wb') as f:
+            for span in self.spans:
+                # We use model_dump_json() to ensure pydantic serialization
+                f.write((span.model_dump_json() + "\n").encode('utf-8'))
+        return out.getvalue()
