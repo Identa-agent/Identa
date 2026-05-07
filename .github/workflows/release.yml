@@ -9,88 +9,35 @@ on:
       - '!*beta*'
 
 jobs:
-  release:
-    name: Build and Publish Packages
+  build-core:
+    name: Build identa-core 🐍
     runs-on: ubuntu-latest
-    
-    # Required for PyPI's Trusted Publishing (OIDC)
-    permissions:
-      id-token: write 
-      contents: read
-    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version-file: "packages/identa-core/.python-version"
-
-      - name: Inject Dynamic Version into pyproject.toml files
+      - name: Inject Dynamic Version
         run: |
-          # 1. Strip the 'v' from the git tag (works for v0.4.1b1 -> 0.4.1b1, or stays 0.4.1b1 if no v)
           VERSION=${GITHUB_REF_NAME#v}
-          echo "Preparing release for version: $VERSION"
-
-          # 2. Run a safe, inline Python script to update the TOML files
           python -c "
           import re
-          import sys
-
           version = '$VERSION'
-
-          def update_file(filepath, is_sdk=False):
-              with open(filepath, 'r') as f:
-                  data = f.read()
-              
-              # A. Update the main package version: version = \"...\" -> version = \"0.4.1b1\"
-              data = re.sub(r'^version\s*=\s*[\"\'].*?[\"\']', f'version = \"{version}\"', data, flags=re.MULTILINE)
-              
-              # B. If this is the SDK, pin the identa-core dependency
-              if is_sdk:
-                  # Safely matches \"identa-core\", \"identa-core==0.1\", \"identa-core>=0.4\" etc.
-                  # Replaces strictly with \"identa-core==0.4.1b1\"
-                  data = re.sub(r'([\"\'])identa-core([=><~^][^\"\']*)?([\"\'])', f'\g<1>identa-core=={version}\g<3>', data)
-                  
-                  # Updates table dependencies if you use them (e.g., identa-core = { version = \"...\" })
-                  data = re.sub(r'(identa-core\s*=\s*\{.*?version\s*=\s*)[\"\'].*?[\"\']', f'\g<1>\"{version}\"', data)
-
-              with open(filepath, 'w') as f:
-                  f.write(data)
-              print(f'Successfully updated {filepath}')
-
-          # Execute for both packages
-          update_file('packages/identa-core/pyproject.toml')
-          update_file('packages/identa-sdk/pyproject.toml', is_sdk=True)
+          with open('packages/identa-core/pyproject.toml', 'r') as f: data = f.read()
+          data = re.sub(r'^version\s*=\s*[\"\'].*?[\"\']', f'version = \"{version}\"', data, flags=re.MULTILINE)
+          with open('packages/identa-core/pyproject.toml', 'w') as f: f.write(data)
           "
-
       - name: Build identa-core
         working-directory: packages/identa-core
         run: uv build
-
-      - name: Publish identa-core to PyPI
-        working-directory: packages/identa-core
-        run: uv publish
-
-      - name: Wait for PyPI propagation
-        run: sleep 30
-
-      - name: Build identa-sdk
-        working-directory: packages/identa-sdk
-        run: uv build
-
-      - name: Publish identa-sdk to PyPI
-        working-directory: packages/identa-sdk
-        run: uv publish
-
       - name: Store identa-core artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -98,9 +45,85 @@ jobs:
           path: packages/identa-core/dist/
           retention-days: 1
 
+  publish-core:
+    name: Publish identa-core to PyPI
+    needs: build-core
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write 
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+      - name: Download identa-core artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: identa-core-dist
+          path: packages/identa-core/dist/
+      - name: Publish identa-core to PyPI
+        working-directory: packages/identa-core
+        run: uv publish
+
+  build-sdk:
+    name: Build identa-sdk 🐍
+    needs: publish-core
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for PyPI propagation
+        run: sleep 30
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "packages/identa-core/.python-version"
+      - name: Inject Dynamic Version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          python -c "
+          import re
+          version = '$VERSION'
+          with open('packages/identa-sdk/pyproject.toml', 'r') as f: data = f.read()
+          data = re.sub(r'^version\s*=\s*[\"\'].*?[\"\']', f'version = \"{version}\"', data, flags=re.MULTILINE)
+          data = re.sub(r'([\"\'])identa-core([=><~^][^\"\']*)?([\"\'])', f'\g<1>identa-core=={version}\g<3>', data)
+          data = re.sub(r'(identa-core\s*=\s*\{.*?version\s*=\s*)[\"\'].*?[\"\']', f'\g<1>\"{version}\"', data)
+          with open('packages/identa-sdk/pyproject.toml', 'w') as f: f.write(data)
+          "
+      - name: Build identa-sdk
+        working-directory: packages/identa-sdk
+        run: uv build
       - name: Store identa-sdk artifacts
         uses: actions/upload-artifact@v4
         with:
           name: identa-sdk-dist
           path: packages/identa-sdk/dist/
           retention-days: 1
+
+  publish-sdk:
+    name: Publish identa-sdk to PyPI
+    needs: build-sdk
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write 
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+      - name: Download identa-sdk artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: identa-sdk-dist
+          path: packages/identa-sdk/dist/
+      - name: Publish identa-sdk to PyPI
+        working-directory: packages/identa-sdk
+        run: uv publish
