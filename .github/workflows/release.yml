@@ -28,6 +28,7 @@ jobs:
       - name: Inject Dynamic Version
         run: |
           VERSION=${GITHUB_REF_NAME#v}
+          echo "SETUPTOOLS_SCM_PRETEND_VERSION=$VERSION" >> $GITHUB_ENV
           python -c "
           import re
           version = '$VERSION'
@@ -85,6 +86,7 @@ jobs:
       - name: Inject Dynamic Version
         run: |
           VERSION=${GITHUB_REF_NAME#v}
+          echo "SETUPTOOLS_SCM_PRETEND_VERSION=$VERSION" >> $GITHUB_ENV
           python -c "
           import re
           version = '$VERSION'
