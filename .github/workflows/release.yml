@@ -37,7 +37,7 @@ jobs:
           "
       - name: Build identa-core
         working-directory: packages/identa-core
-        run: uv build
+        run: uv build --out-dir dist
       - name: Store identa-core artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -99,7 +99,7 @@ jobs:
           "
       - name: Build identa-sdk
         working-directory: packages/identa-sdk
-        run: uv build
+        run: uv build --out-dir dist
       - name: Store identa-sdk artifacts
         uses: actions/upload-artifact@v4
         with:
