@@ -1,8 +1,9 @@
 import uuid
 import contextvars
 from datetime import datetime, timezone
-from typing import Any, List, Optional, Union, Dict, Callable
-from identa.core.domain.models import Workspace, Run, MetricSpec, RunStatus
+import asyncio
+from typing import Any, List, Optional, Union, Dict, Callable, Coroutine
+from identa.core.domain.models import Workspace, Run, MetricSpec, RunStatus, MetricAggregate
 from identa.core.domain.evaluation import EvaluationEngine
 from identa.core.domain.metrics import ExactMatchMetric, LatencyMetric
 from identa.core.domain.results import EvaluationResult
@@ -269,3 +270,67 @@ def execute(command: Union[Command, Query]):
     else:
         # Fallback for handlers not yet refactored
         raise NotImplementedError(f"Handler for {type(command)} must implement 'handle(cmd)'")
+
+async def evaluate_async(agent: Any, suite: List[Dict[str, Any]], 
+                         max_concurrency: int = 5, **kwargs) -> EvaluationResult:
+    """Asynchronously evaluate an agent against a suite of tests."""
+    client = get_client()
+    if not client:
+        raise ValueError("Call set_workspace first")
+    
+    semaphore = asyncio.Semaphore(max_concurrency)
+    
+    async def run_one(test):
+        async with semaphore:
+            # Wrap sync agent in thread pool
+            loop = asyncio.get_running_loop()
+            # client.evaluate is sync, but it calls engine.evaluate which is also sync
+            return await loop.run_in_executor(None, lambda: evaluate(agent, [test], **kwargs))
+    
+    results = await asyncio.gather(*[run_one(t) for t in suite])
+    return _merge_results(results)
+
+def _merge_results(results: List[EvaluationResult]) -> EvaluationResult:
+    if not results:
+        raise ValueError("No results to merge")
+    
+    first = results[0]
+    all_per_test = []
+    all_trace_refs = []
+    
+    # Aggregates need to be recomputed
+    metric_sums: Dict[str, float] = {}
+    metric_counts: Dict[str, int] = {}
+    
+    for r in results:
+        all_per_test.extend(r.per_test)
+        all_trace_refs.extend(r.trace_refs)
+        for agg in r.aggregates:
+            metric_sums[agg.metric_name] = metric_sums.get(agg.metric_name, 0.0) + (agg.value * agg.count)
+            metric_counts[agg.metric_name] = metric_counts.get(agg.metric_name, 0) + agg.count
+
+    final_aggregates = [
+        MetricAggregate(
+            metric_name=name,
+            value=metric_sums[name] / metric_counts[name],
+            count=metric_counts[name]
+        )
+        for name in metric_sums
+    ]
+
+    return EvaluationResult(
+        id=str(uuid.uuid4()),
+        run_id=first.run_id,
+        suite_hash=first.suite_hash,
+        suite_version=first.suite_version,
+        structure_hash=first.structure_hash,
+        resolution=first.resolution,
+        metric_specs=first.metric_specs,
+        aggregates=final_aggregates,
+        per_test=all_per_test,
+        trace_refs=all_trace_refs,
+        structure_delta=first.structure_delta, # Note: structural delta might need merging if resolution != boundary
+        artifact_port=first.artifact_port,
+        semantic_drift=sum(r.semantic_drift for r in results) / len(results) if results else 0.0
+    )
+
