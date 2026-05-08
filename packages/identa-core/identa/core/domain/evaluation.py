@@ -12,6 +12,7 @@ from identa.core.domain.results import EvaluationResult, PerTestResult
 from identa.core.domain.structure import AgentStructure, ObservedStructureDelta
 from identa.core.domain.tracing_service import TracingService
 from identa.core.domain.metrics import Metric
+from identa.core.domain.drift_engine import EnterpriseDriftEngine
 from identa.core.ports.artifacts import ArtifactPort
 from identa.core.ports.llm_judge import LLMJudgePort
 import io
@@ -54,6 +55,7 @@ class EvaluationEngine:
         self.artifact_port = artifact_port
         self.embedding_provider = embedding_provider
         self.llm_judge = llm_judge
+        self.drift_engine = EnterpriseDriftEngine(embedding_provider)
 
     def calculate_semantic_drift(self, baseline_texts: List[str], current_texts: List[str]) -> float:
         if not self.embedding_provider or not baseline_texts or not current_texts:
@@ -78,6 +80,9 @@ class EvaluationEngine:
         metrics: Optional[List[Union[str, MetricSpec]]] = None,
         mode: str = "controlled",
         baseline_texts: Optional[List[str]] = None,
+        baseline_structure: Optional[AgentStructure] = None,
+        baseline_traces: Optional[List[List[str]]] = None,
+        baseline_node_outputs: Optional[Dict[str, List[Any]]] = None,
         drift_mode: str = "standard"
     ) -> EvaluationResult:
         # [Inside evaluate]
@@ -95,6 +100,8 @@ class EvaluationEngine:
         trace_refs = []
         observed_nodes_across_suite = {} # { node_id: count }
         current_texts = []
+        current_traces = []
+        current_node_outputs = {}
 
         # 1. Compute stable suite identity (replaces hardcoded "TODO").
         suite_hash = _compute_suite_hash(suite)
@@ -128,12 +135,13 @@ class EvaluationEngine:
             # End Trace
             trace = TracingService.end_trace()
             
-            # ... [rest of the evaluate method logic] ...
             if trace:
+                current_traces.append(trace.node_sequence)
                 for span in trace.spans:
                     if span.metadata.node_id:
                         nid = span.metadata.node_id
                         observed_nodes_across_suite[nid] = observed_nodes_across_suite.get(nid, 0) + 1
+                        current_node_outputs.setdefault(nid, []).append(span.outputs)
             
             trace_id = None
             if trace and self.artifact_port:
@@ -175,9 +183,24 @@ class EvaluationEngine:
             for name, data in aggregates.items()
         ]
 
-        # Calculate semantic drift if baseline is provided
+        # Calculate drift
         semantic_drift = 0.0
-        if baseline_texts:
+        drift_report = None
+        
+        if drift_mode == "enterprise":
+            drift_report = self.drift_engine.detect(
+                run_id=run_id,
+                baseline_structure=baseline_structure,
+                current_structure=structure,
+                baseline_texts=baseline_texts or [],
+                current_texts=current_texts,
+                baseline_traces=baseline_traces or [],
+                current_traces=current_traces,
+                baseline_node_outputs=baseline_node_outputs,
+                current_node_outputs=current_node_outputs,
+            )
+            semantic_drift = drift_report.composite_score
+        elif baseline_texts:
             semantic_drift = self.calculate_semantic_drift(baseline_texts, current_texts)
             
             if drift_mode == "vanguard" and self.llm_judge:
@@ -227,5 +250,6 @@ class EvaluationEngine:
             trace_refs=trace_refs,
             structure_delta=structure_delta,
             artifact_port=self.artifact_port,
-            semantic_drift=semantic_drift
+            semantic_drift=semantic_drift,
+            drift_report=drift_report
         )

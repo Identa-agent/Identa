@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from .models import MetricSpec, MetricAggregate
 from .structure import ObservedStructureDelta
 from .tracing import TraceArtifact
+from .drift import UnifiedDriftReport
 from identa.core.ports.artifacts import ArtifactPort
 
 class PerTestResult(BaseModel):
@@ -36,6 +37,7 @@ class EvaluationResult(BaseModel):
     structure_delta: Optional[ObservedStructureDelta] = None
     semantic_drift: float = 0.0
     qualitative_drift: float = 0.0
+    drift_report: Optional[UnifiedDriftReport] = None
     
     # Optional port for lazy fetching of traces
     artifact_port: Optional[ArtifactPort] = Field(default=None, exclude=True)

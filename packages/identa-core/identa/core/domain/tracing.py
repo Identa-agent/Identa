@@ -44,6 +44,13 @@ class TraceArtifact(BaseModel):
     structure_hash: str
     spans: List[Span]
 
+    @property
+    def node_sequence(self) -> List[str]:
+        """Returns the sequence of node_ids in temporal order."""
+        # Sort spans by start_time just in case
+        sorted_spans = sorted(self.spans, key=lambda s: s.timing.start_time)
+        return [s.metadata.node_id for s in sorted_spans if s.metadata.node_id]
+
     def infer_causal_bottleneck(self, baseline_trace: Optional['TraceArtifact'] = None) -> Optional[str]:
         """Identify node whose output change most correlates with metric drift."""
         if not baseline_trace:
