@@ -111,21 +111,33 @@ def reproduce(ctx, run_id):
 
 from identa.sdk.api import evaluate, set_workspace
 from identa.sdk.suites import load_suite
+from identa.sdk.cli.ci import ci as ci_cmd
 
 # ... existing code ...
 
 @cli.command()
-@click.option('--workspace', required=True, help='Workspace ID')
-@click.option('--drift-mode', type=click.Choice(['standard', 'vanguard', 'hybrid']), default='standard', help='Drift calculation track')
+@click.option('--workspace', required=True)
+@click.option('--agent-file', required=True, help='Python file path exporting `agent`')
+@click.option('--agent-symbol', default='agent', help='Variable name of agent in file')
+@click.option('--drift-mode', type=click.Choice(['standard', 'vanguard', 'hybrid']), default='standard')
 @click.argument('suite_file')
-def run(workspace, drift_mode, suite_file):
-    """Run an evaluation suite with a specific drift mode."""
-    click.echo(f"Running suite {suite_file} in mode {drift_mode}...")
-    
+def run(workspace, agent_file, agent_symbol, drift_mode, suite_file):
+    """Run an evaluation suite against a specified agent."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("agent_module", agent_file)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    agent = getattr(module, agent_symbol)
+
     set_workspace(workspace)
     suite = load_suite(suite_file)
+
+    results = evaluate(agent, suite, drift_mode=drift_mode, resolution="node")
+    click.echo(results.summary())
     
-    # Placeholder agent for demonstration/CLI
-    # In a real impl, user might need to specify agent via CLI as well
-    # For now, this is a skeleton
-    click.echo("⚠️ CLI execution requires agent specification - implementation pending.")
+    if results.structure_delta and results.structure_delta.normalized_structural_drift > 0.1:
+        click.echo("⚠️ Structural drift detected!")
+        # We don't raise Exception here as it's just a run, but could be useful for CI
+        # raise click.ClickException("Drift threshold exceeded")
+
+cli.add_command(ci_cmd, name="ci")
