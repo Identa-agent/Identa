@@ -63,3 +63,13 @@ class StoragePort(ABC):
     def update_run_status(self, run_id: str, new_status: RunStatus, reason: Optional[str] = None) -> bool:
         """Atomic update to prevent race conditions."""
         pass
+
+    @abstractmethod
+    def get_tests_by_metric_threshold(self, result_id: str, metric_name: str, 
+                                      threshold: float, above: bool = True) -> List[dict]:
+        pass
+
+    @abstractmethod
+    def get_node_drift_timeseries(self, workspace_id: str, node_id: str, 
+                                  metric_name: str, limit: int = 100) -> List[dict]:
+        pass

@@ -42,13 +42,34 @@ class BaselineModel(Base):
 
 
 class EvaluationResultModel(Base):
-    """Stores the full EvaluationResult as a JSON blob for simplicity."""
+    """Stores the header of EvaluationResult."""
     __tablename__ = "evaluation_results"
     id = Column(String, primary_key=True)
     run_id = Column(String, ForeignKey("runs.id"), nullable=False)
     suite_hash = Column(String, nullable=False)
     resolution = Column(String, nullable=False)
-    data = Column(Text, nullable=False)  # Full JSON blob of EvaluationResult
+    data = Column(Text, nullable=False)  # Full JSON blob of EvaluationResult for backward compatibility
+
+class PerTestResultModel(Base):
+    __tablename__ = "per_test_results"
+    id = Column(String, primary_key=True)
+    result_id = Column(String, ForeignKey("evaluation_results.id"), nullable=False, index=True)
+    test_id = Column(String, nullable=False, index=True)
+    input_data = Column(Text, nullable=False)  # JSON
+    expected_data = Column(Text, nullable=True)  # JSON
+    output_data = Column(Text, nullable=False)  # JSON
+    scores = Column(Text, nullable=False)  # JSON {metric: score}
+    node_scores = Column(Text, nullable=False)  # JSON {node_id: {metric: score}}
+    trace_ref = Column(String, nullable=True)
+    semantic_drift = Column(String, nullable=True)  # Store per-test drift if applicable
+
+class MetricAggregateModel(Base):
+    __tablename__ = "metric_aggregates"
+    id = Column(String, primary_key=True)
+    result_id = Column(String, ForeignKey("evaluation_results.id"), nullable=False, index=True)
+    metric_name = Column(String, nullable=False, index=True)
+    value = Column(String, nullable=False)  # SQLite lacks decimal; store as string or use REAL
+    count = Column(Integer, nullable=False)
 
 
 class ReproducibilityBundleModel(Base):
@@ -216,14 +237,42 @@ class SQLiteStorageAdapter(StoragePort):
     def save_evaluation_result(self, result: EvaluationResult) -> None:
         try:
             with self.Session() as session:
-                model = EvaluationResultModel(
+                # Save header
+                header = EvaluationResultModel(
                     id=result.id,
                     run_id=result.run_id,
                     suite_hash=result.suite_hash,
                     resolution=result.resolution,
-                    data=result.model_dump_json(),
+                    data=result.model_dump_json()
                 )
-                session.merge(model)
+                session.merge(header)
+
+                # Save per-test results for queryability
+                for pt in result.per_test:
+                    pt_model = PerTestResultModel(
+                        id=f"{result.id}_{pt.test_id}",
+                        result_id=result.id,
+                        test_id=pt.test_id,
+                        input_data=json.dumps(pt.input, default=str),
+                        expected_data=json.dumps(pt.expected, default=str),
+                        output_data=json.dumps(pt.output, default=str),
+                        scores=json.dumps(pt.scores),
+                        node_scores=json.dumps(pt.node_scores),
+                        trace_ref=pt.trace_ref
+                    )
+                    session.merge(pt_model)
+
+                # Save aggregates
+                for agg in result.aggregates:
+                    agg_model = MetricAggregateModel(
+                        id=f"{result.id}_{agg.metric_name}",
+                        result_id=result.id,
+                        metric_name=agg.metric_name,
+                        value=str(agg.value),
+                        count=agg.count
+                    )
+                    session.merge(agg_model)
+
                 session.commit()
         except (SQLAlchemyError, sqlite3.Error) as e:
             raise StorageError(f"Failed to save evaluation result {result.id}: {e}")
@@ -318,3 +367,57 @@ class SQLiteStorageAdapter(StoragePort):
                 return result.rowcount > 0
         except (SQLAlchemyError, sqlite3.Error) as e:
             raise StorageError(f"Failed to update run status for {run_id}: {e}")
+
+    def get_tests_by_metric_threshold(self, result_id: str, metric_name: str, 
+                                      threshold: float, above: bool = True) -> List[dict]:
+        try:
+            with self.Session() as session:
+                # This is a bit complex since scores is a JSON blob in SQLite
+                # We fetch and filter in Python for portability, or use SQLite JSON extensions if available
+                # For simplicity, we'll fetch all per-test results for the result_id
+                models = session.query(PerTestResultModel).filter_by(result_id=result_id).all()
+                results = []
+                for m in models:
+                    scores = json.loads(m.scores)
+                    val = scores.get(metric_name)
+                    if val is not None:
+                        if (above and val >= threshold) or (not above and val <= threshold):
+                            results.append({
+                                "test_id": m.test_id,
+                                "input": json.loads(m.input_data),
+                                "output": json.loads(m.output_data),
+                                "score": val
+                            })
+                return results
+        except (SQLAlchemyError, sqlite3.Error) as e:
+            raise StorageError(f"Failed to query tests by metric: {e}")
+
+    def get_node_drift_timeseries(self, workspace_id: str, node_id: str, 
+                                  metric_name: str, limit: int = 100) -> List[dict]:
+        try:
+            with self.Session() as session:
+                # Join runs and evaluation_results and per_test_results
+                # Filter by workspace_id and node_id
+                query = (
+                    session.query(RunModel.started_at, PerTestResultModel.node_scores)
+                    .join(EvaluationResultModel, RunModel.id == EvaluationResultModel.run_id)
+                    .join(PerTestResultModel, EvaluationResultModel.id == PerTestResultModel.result_id)
+                    .filter(RunModel.workspace_id == workspace_id)
+                    .order_by(RunModel.started_at.desc())
+                    .limit(limit)
+                )
+                
+                rows = query.all()
+                timeseries = []
+                for started_at, node_scores_json in rows:
+                    node_scores = json.loads(node_scores_json)
+                    if node_id in node_scores:
+                        val = node_scores[node_id].get(metric_name)
+                        if val is not None:
+                            timeseries.append({
+                                "timestamp": started_at.isoformat(),
+                                "value": val
+                            })
+                return timeseries
+        except (SQLAlchemyError, sqlite3.Error) as e:
+            raise StorageError(f"Failed to query node drift timeseries: {e}")
