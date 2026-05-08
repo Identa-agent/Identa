@@ -21,6 +21,7 @@ root = "../.."
 langgraph  = ["langgraph>=1.1.9"]
 langchain  = ["langchain>=1.2.15"]
 pydantic-ai = ["pydantic-ai>=1.86.1"]
+postgres = ["psycopg2-binary>=2.9.0"]
 all = [
     "langgraph>=1.1.9",
     "langchain>=1.2.15",
