@@ -29,6 +29,7 @@ from identa.core.application.queries.run_queries import (
     ListRunsQuery
 )
 from identa.core.domain.models import ReproducibilityBundle
+from identa.core.domain.drift_temporal import TemporalDriftAnalyzer
 from identa.core.ports.storage import StoragePort
 from identa.core.ports.exporter import ExporterPort
 from identa.core.ports.artifacts import ArtifactPort
@@ -65,6 +66,7 @@ class IdentaClient:
         self.engine = EvaluationEngine(self.metrics_registry, self.artifacts)
         self.repro_engine = ReproductionEngine(self.engine)
         self.calib_engine = CalibrationEngine(evaluate)
+        self.temporal_analyzer = TemporalDriftAnalyzer()
         
         # Handlers with DI
         self.workspace_handler = WorkspaceCommandHandler(self.storage, exporter=self.exporter)
@@ -285,7 +287,10 @@ async def evaluate_async(agent: Any, suite: List[Dict[str, Any]],
             # Wrap sync agent in thread pool
             loop = asyncio.get_running_loop()
             # client.evaluate is sync, but it calls engine.evaluate which is also sync
-            return await loop.run_in_executor(None, lambda: evaluate(agent, [test], **kwargs))
+            res = await loop.run_in_executor(None, lambda: evaluate(agent, [test], **kwargs))
+            if res.semantic_drift > 0:
+                client.temporal_analyzer.update(res.semantic_drift)
+            return res
     
     results = await asyncio.gather(*[run_one(t) for t in suite])
     return _merge_results(results)
@@ -331,6 +336,7 @@ def _merge_results(results: List[EvaluationResult]) -> EvaluationResult:
         trace_refs=all_trace_refs,
         structure_delta=first.structure_delta, # Note: structural delta might need merging if resolution != boundary
         artifact_port=first.artifact_port,
-        semantic_drift=sum(r.semantic_drift for r in results) / len(results) if results else 0.0
+        semantic_drift=sum(r.semantic_drift for r in results) / len(results) if results else 0.0,
+        drift_report=None
     )
 
