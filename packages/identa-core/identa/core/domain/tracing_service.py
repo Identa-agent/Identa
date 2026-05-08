@@ -3,6 +3,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional, Any, Dict
 from identa.core.domain.tracing import Span, SpanMetadata, SpanTiming, TraceArtifact, MediaContent
+import threading
+
+_thread_local = threading.local()
 
 # No default=[] — using a sentinel avoids sharing a single list across all contexts.
 _active_spans: contextvars.ContextVar[List[Span]] = contextvars.ContextVar("_active_spans")
@@ -10,10 +13,22 @@ _current_trace: contextvars.ContextVar[Optional[TraceArtifact]] = contextvars.Co
 
 class TracingService:
     @staticmethod
+    def _get_active_spans() -> List[Span]:
+        # Try contextvar first, fallback to thread-local
+        try:
+            return _active_spans.get()
+        except LookupError:
+            if not hasattr(_thread_local, 'spans'):
+                _thread_local.spans = []
+            return _thread_local.spans
+
+    @staticmethod
     def start_trace(structure_hash: Optional[str] = None) -> str:
         trace_id = str(uuid.uuid4())
         _current_trace.set(TraceArtifact(id=trace_id, structure_hash=structure_hash or "none", spans=[]))
-        _active_spans.set([])  # Always create a fresh list per trace — never share across contexts.
+        spans = []
+        _active_spans.set(spans)
+        _thread_local.spans = spans
         return trace_id
 
     @staticmethod
@@ -26,7 +41,7 @@ class TracingService:
     @staticmethod
     def start_span(name: str, kind: str, metadata: Optional[SpanMetadata] = None) -> str:
         span_id = str(uuid.uuid4())
-        active = _active_spans.get([])
+        active = TracingService._get_active_spans()
         parent_id = active[-1].id if active else None
         now = datetime.now(timezone.utc)
         span = Span(
@@ -44,7 +59,7 @@ class TracingService:
 
     @staticmethod
     def end_span(span_id: str, outputs: Optional[Dict[str, Any]] = None):
-        active = _active_spans.get([])
+        active = TracingService._get_active_spans()
         if not active or active[-1].id != span_id:
             return  # Out-of-order close — ignore gracefully.
 
@@ -65,7 +80,7 @@ class TracingService:
     @staticmethod
     def log_media(media_item: MediaContent):
         """Attaches media content to the currently active span."""
-        active = _active_spans.get([])
+        active = TracingService._get_active_spans()
         if not active:
             return
         
