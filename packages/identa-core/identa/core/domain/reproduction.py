@@ -37,7 +37,7 @@ class ReproductionEngine:
             mode=bundle.evaluation_mode
         )
 
-def capture_environment() -> Dict[str, Any]:
+def capture_environment(agent: Any = None) -> Dict[str, Any]:
     """Captures the current Python environment and package versions."""
     frameworks = ["langgraph", "langchain", "pydantic-ai", "pydantic"]
     versions = {}
@@ -52,8 +52,20 @@ def capture_environment() -> Dict[str, Any]:
     except importlib.metadata.PackageNotFoundError:
         identa_version = "unknown"
 
+    # Capture prompt hashes if agent exposes them
+    prompt_hashes = {}
+    if agent and hasattr(agent, "_system_prompt"):
+        import hashlib
+        prompt_hashes["system_prompt"] = hashlib.sha256(
+            str(agent._system_prompt).encode()
+        ).hexdigest()
+
     return {
         "python_version": sys.version.split()[0],
         "identa_version": identa_version,
-        "framework_versions": versions
+        "framework_versions": versions,
+        "prompt_hashes": prompt_hashes,
+        "system_info": {
+            "platform": sys.platform,
+        }
     }
