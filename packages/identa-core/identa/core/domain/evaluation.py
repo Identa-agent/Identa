@@ -3,6 +3,8 @@ import json
 import uuid
 import numpy as np
 from scipy.stats import wasserstein_distance
+from scipy.spatial.distance import cdist
+import ot
 from datetime import timezone
 from typing import Any, List, Optional, Protocol, Union, Dict
 from identa.core.domain.models import MetricSpec, MetricAggregate
@@ -53,12 +55,15 @@ class EvaluationEngine:
     def calculate_semantic_drift(self, baseline_texts: List[str], current_texts: List[str]) -> float:
         if not self.embedding_provider or not baseline_texts or not current_texts:
             return 0.0
-        
+
         baseline_embeddings = np.array([self.embedding_provider.get_embedding(t) for t in baseline_texts])
         current_embeddings = np.array([self.embedding_provider.get_embedding(t) for t in current_texts])
-        
-        # Calculate Wasserstein distance between the sets of embeddings (flattened)
-        return wasserstein_distance(baseline_embeddings.flatten(), current_embeddings.flatten())
+
+        # 2-Wasserstein via optimal transport on cosine distance matrix
+        M = cdist(baseline_embeddings, current_embeddings, metric='cosine')
+        a = np.ones(len(baseline_embeddings)) / len(baseline_embeddings)
+        b = np.ones(len(current_embeddings)) / len(current_embeddings)
+        return float(ot.emd2(a, b, M))
 
     def evaluate(
         self,
