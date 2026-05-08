@@ -13,6 +13,7 @@ from identa.core.domain.structure import AgentStructure, ObservedStructureDelta
 from identa.core.domain.tracing_service import TracingService
 from identa.core.domain.metrics import Metric
 from identa.core.ports.artifacts import ArtifactPort
+from identa.core.ports.llm_judge import LLMJudgePort
 import io
 
 # ... [rest of the methods: _compute_suite_hash, _extract_suite_version] ...
@@ -47,10 +48,12 @@ class AgentProtocol(Protocol):
         ...
 
 class EvaluationEngine:
-    def __init__(self, metrics_registry: Dict[str, Metric], artifact_port: Optional[ArtifactPort] = None, embedding_provider: Optional[EmbeddingProvider] = None):
+    def __init__(self, metrics_registry: Dict[str, Metric], artifact_port: Optional[ArtifactPort] = None, 
+                 embedding_provider: Optional[EmbeddingProvider] = None, llm_judge: Optional[LLMJudgePort] = None):
         self.metrics_registry = metrics_registry
         self.artifact_port = artifact_port
         self.embedding_provider = embedding_provider
+        self.llm_judge = llm_judge
 
     def calculate_semantic_drift(self, baseline_texts: List[str], current_texts: List[str]) -> float:
         if not self.embedding_provider or not baseline_texts or not current_texts:
@@ -79,8 +82,9 @@ class EvaluationEngine:
     ) -> EvaluationResult:
         # [Inside evaluate]
         # Branching logic for drift_mode
+        qualitative_drift = 0.0
         if drift_mode == "vanguard":
-            # Initialize/Run advanced models
+            # Initialize/Run advanced models (scaffold for now)
             pass
         elif drift_mode == "standard":
             # Standard stats
@@ -175,6 +179,16 @@ class EvaluationEngine:
         semantic_drift = 0.0
         if baseline_texts:
             semantic_drift = self.calculate_semantic_drift(baseline_texts, current_texts)
+            
+            if drift_mode == "vanguard" and self.llm_judge:
+                # Pairwise judge between baseline and current outputs
+                total_q_drift = 0.0
+                for b_text, c_text in zip(baseline_texts, current_texts):
+                    total_q_drift += self.llm_judge.judge_drift(b_text, c_text)
+                qualitative_drift = total_q_drift / len(baseline_texts)
+                
+                # Combine with semantic drift (0.6 semantic, 0.4 qualitative)
+                semantic_drift = 0.6 * semantic_drift + 0.4 * qualitative_drift
         
         # 5. Compute Structure Delta
         structure_delta = None
