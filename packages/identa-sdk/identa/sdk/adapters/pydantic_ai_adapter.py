@@ -4,6 +4,7 @@ from identa.sdk.adapters.base import BaseAdapter, WrappedAgent
 from identa.core.domain.tracing_service import TracingService
 from identa.core.domain.tracing import SpanMetadata
 from identa.core.domain.structure import AgentStructure
+from identa.core.domain.migration import MigrationEngine, MigrationPlan, ChangeType
 
 class PydanticAIAdapter(BaseAdapter):
     framework_name = "pydantic_ai"
@@ -46,3 +47,13 @@ class PydanticAIAdapter(BaseAdapter):
             finally:
                 TracingService.end_span(span_id)
         return WrappedAgent(callable=traced, original=agent, framework_name=self.framework_name)
+
+def _mutate_pydantic_ai(agent, plan: MigrationPlan):
+    for change in plan.changes:
+        if change.change_type == ChangeType.REPLACE_MODEL:
+            if hasattr(agent, "model"):
+                agent.model = change.to_val
+    return agent
+
+# Register on import
+MigrationEngine.register_mutator("pydantic_ai", _mutate_pydantic_ai)

@@ -8,6 +8,7 @@ from identa.sdk.adapters.base import BaseAdapter, WrappedAgent
 from identa.core.domain.tracing_service import TracingService
 from identa.core.domain.tracing import SpanMetadata
 from identa.core.domain.structure import AgentStructure, AgentNode, AgentEdge
+from identa.core.domain.migration import MigrationEngine, MigrationPlan, ChangeType
 
 logger = logging.getLogger(__name__)
 
@@ -111,3 +112,20 @@ class LangGraphAdapter(BaseAdapter):
                 TracingService.end_span(span_id)
                 
         return WrappedAgent(callable=traced, original=graph, framework_name=self.framework_name)
+
+def _mutate_langgraph(agent, plan: MigrationPlan):
+    for change in plan.changes:
+        if change.change_type == ChangeType.REPLACE_MODEL:
+            # LangGraph node mutation
+            if hasattr(agent, "nodes") and change.node_id in agent.nodes:
+                node = agent.nodes[change.node_id]
+                if hasattr(node, "bound"):
+                    node.bound = change.to_val
+                elif hasattr(node, "runnable"):
+                    # For RunnableLambda/RunnableSequence wrappers
+                    if hasattr(node.runnable, "bind"):
+                        node.runnable = node.runnable.bind(model=change.to_val)
+    return agent
+
+# Register on import
+MigrationEngine.register_mutator("langgraph", _mutate_langgraph)
