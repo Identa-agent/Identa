@@ -44,22 +44,53 @@ class TraceArtifact(BaseModel):
     structure_hash: str
     spans: List[Span]
 
-    def infer_causal_bottleneck(self) -> Optional[str]:
-        """Simple causal inference: Identify node with highest average latency."""
-        node_latencies: Dict[str, List[float]] = {}
-        for span in self.spans:
-            if span.metadata.node_id:
-                nid = span.metadata.node_id
-                if nid not in node_latencies:
-                    node_latencies[nid] = []
-                node_latencies[nid].append(span.timing.latency_ms)
-        
-        if not node_latencies:
-            return None
+    def infer_causal_bottleneck(self, baseline_trace: Optional['TraceArtifact'] = None) -> Optional[str]:
+        """Identify node whose output change most correlates with metric drift."""
+        if not baseline_trace:
+            # Fallback to latency-based bottleneck if no baseline
+            node_latencies: Dict[str, List[float]] = {}
+            for span in self.spans:
+                if span.metadata.node_id:
+                    nid = span.metadata.node_id
+                    if nid not in node_latencies:
+                        node_latencies[nid] = []
+                    node_latencies[nid].append(span.timing.latency_ms)
             
-        # Return node ID with the highest average latency
-        avg_latencies = {nid: sum(latencies)/len(latencies) for nid, latencies in node_latencies.items()}
-        return max(avg_latencies, key=avg_latencies.get)
+            if not node_latencies:
+                return None
+                
+            avg_latencies = {nid: sum(latencies)/len(latencies) for nid, latencies in node_latencies.items()}
+            return max(avg_latencies, key=avg_latencies.get)
+        
+        # Map node_id -> output in baseline
+        baseline_outputs = {}
+        for span in baseline_trace.spans:
+            if span.metadata.node_id:
+                baseline_outputs[span.metadata.node_id] = span.outputs
+        
+        # Find node with maximum output divergence
+        max_divergence = 0.0
+        bottleneck_node = None
+        
+        for span in self.spans:
+            nid = span.metadata.node_id
+            if nid and nid in baseline_outputs:
+                # Simple string divergence
+                b_out = str(baseline_outputs[nid])
+                c_out = str(span.outputs)
+                # Avoid division by zero
+                b_words = b_out.split()
+                c_words = c_out.split()
+                if not b_words and not c_words:
+                    divergence = 0.0
+                else:
+                    divergence = len(set(b_words) ^ set(c_words)) / max(len(b_words), 1)
+                
+                if divergence > max_divergence:
+                    max_divergence = divergence
+                    bottleneck_node = nid
+        
+        return bottleneck_node
 
     def to_gzip_jsonl(self) -> bytes:
         """Serializes the trace spans to a gzipped JSON Lines format."""
