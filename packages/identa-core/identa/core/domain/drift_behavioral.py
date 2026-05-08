@@ -53,7 +53,7 @@ class BehavioralDriftAnalyzer:
             [curr_paths.get(p, 0) for p in all_paths]
         ])
         # Only test if enough data
-        if contingency.sum() > 100 and (contingency > 5).sum() / contingency.size > 0.8:
+        if contingency.sum() > 100 and (contingency > 5).sum() / contingency.size > 0.7:
             _, p_value, _, _ = stats.chi2_contingency(contingency + 1)  # +1 for stability
         else:
             p_value = 1.0

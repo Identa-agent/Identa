@@ -18,7 +18,11 @@ class SemanticDriftAnalyzer:
     def _median_heuristic(self, X: np.ndarray) -> float:
         """Median heuristic for RBF bandwidth."""
         dists = pdist(X, metric='euclidean')
-        return 1.0 / (2 * np.median(dists) ** 2) if len(dists) > 0 else 1.0
+        median_dist = np.median(dists) if len(dists) > 0 else 0.0
+        if median_dist == 0:
+            # Fallback for identical embeddings
+            return 1.0
+        return 1.0 / (2 * median_dist ** 2)
 
     def mmd_permutation_test(self, baseline_texts: List[str], current_texts: List[str],
                              n_permutations: int = 1000) -> Tuple[float, float, float]:

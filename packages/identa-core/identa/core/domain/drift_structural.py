@@ -30,8 +30,8 @@ class StructuralDriftAnalyzer:
             ged = nx.graph_edit_distance(
                 G1, G2,
                 node_subst_cost=lambda n1, n2: 0 if n1 == n2 else 0.5,
-                node_del_cost=lambda n: self.node_del * G1.nodes[n].get('weight', 1.0),
-                node_ins_cost=lambda n: self.node_ins * G2.nodes[n].get('weight', 1.0),
+                node_del_cost=lambda n: self.node_del * n.get('weight', 1.0),
+                node_ins_cost=lambda n: self.node_ins * n.get('weight', 1.0),
                 edge_del_cost=lambda e: self.edge_del,
                 edge_ins_cost=lambda e: self.edge_ins,
                 timeout=5  # seconds
