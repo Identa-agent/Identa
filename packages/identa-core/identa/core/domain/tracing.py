@@ -25,6 +25,8 @@ class SpanMetadata(BaseModel):
     node_id: Optional[str] = None
     node_id_stability: Literal["stable", "ephemeral"] = "stable"
     structure_hash: Optional[str] = None
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
 
 class Span(BaseModel):
     id: str

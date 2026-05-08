@@ -2,6 +2,7 @@ import math
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Dict
 from identa.core.domain.tracing import TraceArtifact
+from pydantic import BaseModel
 
 class Metric(ABC):
     @abstractmethod
@@ -43,3 +44,31 @@ class LatencyMetric(Metric):
             return 0.0
         # Sum of all top-level spans or just the duration of the whole trace
         return sum(s.timing.latency_ms for s in trace.spans if s.parent_id is None)
+
+class CostModel(BaseModel):
+    model: str
+    input_cost_per_1k: float
+    output_cost_per_1k: float
+
+class CostMetric(Metric):
+    def __init__(self, cost_model: CostModel):
+        self.cost_model = cost_model
+
+    def compute(self, test_input: Any, output: Any, expected: Any, trace: Optional[TraceArtifact] = None) -> float:
+        if not trace:
+            return 0.0
+        
+        total_cost = 0.0
+        for span in trace.spans:
+            if span.kind == "llm" and span.metadata.model:
+                # Extract tokens from metadata
+                input_tokens = span.metadata.input_tokens or 0
+                output_tokens = span.metadata.output_tokens or 0
+                
+                # Simple cost calc
+                if self.cost_model.model in span.metadata.model:
+                    total_cost += (
+                        input_tokens * self.cost_model.input_cost_per_1k / 1000 +
+                        output_tokens * self.cost_model.output_cost_per_1k / 1000
+                    )
+        return total_cost
