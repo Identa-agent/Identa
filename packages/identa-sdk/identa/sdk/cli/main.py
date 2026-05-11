@@ -11,6 +11,16 @@ def cli(ctx, db_url):
     ctx.ensure_object(dict)
     ctx.obj['storage'] = SQLiteStorageAdapter(db_url)
 
+@cli.command()
+def version():
+    """Show Identa version."""
+    import pkg_resources
+    try:
+        ver = pkg_resources.get_distribution("identa-sdk").version
+        click.echo(f"Identa SDK version {ver}")
+    except Exception:
+        click.echo("Identa SDK (development version)")
+
 @cli.group()
 def runs():
     """Manage runs"""
@@ -18,12 +28,16 @@ def runs():
 
 @runs.command(name="list")
 @click.option('--workspace', required=True, help='Workspace ID')
+@click.option('--format', type=click.Choice(['text', 'json']), default='text')
 @click.pass_context
-def list_runs(ctx, workspace):
+def list_runs(ctx, workspace, format):
     storage = ctx.obj['storage']
     runs = storage.list_runs(workspace)
-    for run in runs:
-        click.echo(f"{run.id} | {run.name} | {run.status}")
+    if format == 'json':
+        click.echo(json.dumps([r.model_dump() for r in runs], indent=2, default=str))
+    else:
+        for run in runs:
+            click.echo(f"{run.id} | {run.name} | {run.status}")
 
 @runs.command(name="show")
 @click.argument('run_id')
@@ -120,8 +134,9 @@ from identa.sdk.cli.ci import ci as ci_cmd
 @click.option('--agent-file', required=True, help='Python file path exporting `agent`')
 @click.option('--agent-symbol', default='agent', help='Variable name of agent in file')
 @click.option('--drift-mode', type=click.Choice(['standard', 'vanguard', 'hybrid']), default='standard')
+@click.option('--format', type=click.Choice(['text', 'json']), default='text')
 @click.argument('suite_file')
-def run(workspace, agent_file, agent_symbol, drift_mode, suite_file):
+def run(workspace, agent_file, agent_symbol, drift_mode, format, suite_file):
     """Run an evaluation suite against a specified agent."""
     import importlib.util
     spec = importlib.util.spec_from_file_location("agent_module", agent_file)
@@ -133,11 +148,16 @@ def run(workspace, agent_file, agent_symbol, drift_mode, suite_file):
     suite = load_suite(suite_file)
 
     results = evaluate(agent, suite, drift_mode=drift_mode, resolution="node")
-    click.echo(results.summary())
+    
+    if format == 'json':
+        click.echo(results.model_dump_json())
+    else:
+        click.echo(results.summary())
+        if results.drift_report:
+            click.echo(results.drift_report.summary())
     
     if results.structure_delta and results.structure_delta.normalized_structural_drift > 0.1:
-        click.echo("⚠️ Structural drift detected!")
-        # We don't raise Exception here as it's just a run, but could be useful for CI
-        # raise click.ClickException("Drift threshold exceeded")
+        if format == 'text':
+            click.echo("⚠️ Structural drift detected!")
 
 cli.add_command(ci_cmd, name="ci")
