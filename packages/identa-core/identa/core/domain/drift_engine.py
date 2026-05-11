@@ -4,6 +4,7 @@ from identa.core.domain.drift_structural import StructuralDriftAnalyzer
 from identa.core.domain.drift_semantic import SemanticDriftAnalyzer
 from identa.core.domain.drift_behavioral import BehavioralDriftAnalyzer
 from identa.core.domain.drift_causal import CausalAttributionAnalyzer
+from identa.core.domain.drift_temporal import TemporalDriftAnalyzer
 from identa.core.domain.structure import AgentStructure
 
 class EnterpriseDriftEngine:
@@ -12,6 +13,7 @@ class EnterpriseDriftEngine:
         self.semantic = SemanticDriftAnalyzer(embedding_provider)
         self.behavioral = BehavioralDriftAnalyzer()
         self.causal = CausalAttributionAnalyzer()
+        self.temporal = TemporalDriftAnalyzer()
         self.llm_judge = llm_judge
 
     
@@ -122,6 +124,23 @@ class EnterpriseDriftEngine:
                 metadata={"shapley": causal["shapley_values"]}
             ))
         
+        # L5: Temporal
+        # We monitor the semantic score over time
+        if drift_mode in ("vanguard", "hybrid") and results:
+            sem_result = next((r for r in results if r.layer == DriftLayer.SEMANTIC), None)
+            if sem_result:
+                temp_info = self.temporal.update(sem_result.score)
+                results.append(DriftTestResult(
+                    layer=DriftLayer.TEMPORAL,
+                    metric_name="adwin_adaptive_windowing",
+                    score=temp_info["mean"], # current mean of the active window
+                    raw_statistic=temp_info["cumulative_mean"],
+                    is_drift=temp_info["drift_detected"],
+                    severity=DriftSeverity.HIGH if temp_info["drift_detected"] else DriftSeverity.NONE,
+                    recommendation="Gradual temporal drift detected. Consider re-baselining or model fine-tuning." if temp_info["drift_detected"] else None,
+                    metadata=temp_info
+                ))
+
         # Composite score with Bonferroni-corrected significance
         drift_layers = [r for r in results if r.is_drift]
         overall = len(drift_layers) > 0

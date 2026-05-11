@@ -69,3 +69,16 @@ class TemporalDriftAnalyzer:
         recent = list(self.history)[-window:]
         older = list(self.history)[-(window*2):-window]
         return float(np.mean(recent) - np.mean(older))
+
+    def get_state(self) -> dict:
+        return {
+            "window": self.adwin.window,
+            "history": list(self.history)
+        }
+        
+    def set_state(self, state: dict) -> None:
+        if "window" in state:
+            self.adwin.window = state["window"]
+            self.adwin.width = len(self.adwin.window)
+        if "history" in state:
+            self.history = deque(state["history"], maxlen=10000)

@@ -93,7 +93,19 @@ class IdentaClient:
         ))
 
     def evaluate(self, agent: Any, suite: List[Dict[str, Any]], run_id: str, **kwargs):
-        return self.engine.evaluate(agent, suite, run_id, **kwargs)
+        # 1. Load temporal state for this workspace
+        state = self.storage.get_temporal_state(self.workspace_id, "overall_drift")
+        if state:
+            self.engine.drift_engine.temporal.set_state(state)
+            
+        # 2. Run evaluation
+        result = self.engine.evaluate(agent, suite, run_id, **kwargs)
+        
+        # 3. Save updated temporal state
+        new_state = self.engine.drift_engine.temporal.get_state()
+        self.storage.save_temporal_state(self.workspace_id, "overall_drift", new_state)
+        
+        return result
 
     def execute(self, command: Union[Command, Query]) -> Any:
         return execute(command)

@@ -73,3 +73,11 @@ class StoragePort(ABC):
     def get_node_drift_timeseries(self, workspace_id: str, node_id: str, 
                                   metric_name: str, limit: int = 100) -> List[dict]:
         pass
+
+    @abstractmethod
+    def save_temporal_state(self, workspace_id: str, analyzer_id: str, state: dict) -> None:
+        pass
+
+    @abstractmethod
+    def get_temporal_state(self, workspace_id: str, analyzer_id: str) -> Optional[dict]:
+        pass
