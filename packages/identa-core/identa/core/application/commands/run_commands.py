@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional, Literal
+from typing import Any, Dict, Optional
 from pydantic import Field
 from datetime import datetime, timezone
 from functools import singledispatchmethod
@@ -21,7 +21,7 @@ class StartRunCommand(Command):
 
 class FinishRunCommand(Command):
     run_id: str
-    status: Literal["finished", "failed"] = "finished"
+    status: RunStatus = RunStatus.FINISHED
 
 class RunCommandHandler:
     def __init__(self, storage: StoragePort, exporter: Optional[ExporterPort] = None):
@@ -54,11 +54,10 @@ class RunCommandHandler:
 
     @handle.register
     def _(self, cmd: FinishRunCommand) -> None:
-        new_status = RunStatus.FAILED if cmd.status == "failed" else RunStatus.FINISHED
-        reason = "Run manually marked as failed via command." if cmd.status == "failed" else None
+        reason = "Run manually marked as failed via command." if cmd.status == RunStatus.FAILED else None
         
         try:
-            self.storage.update_run_status(cmd.run_id, new_status, reason=reason)
+            self.storage.update_run_status(cmd.run_id, cmd.status, reason=reason)
         except Exception as e:
             logger.error(f"Storage failure while updating FinishRunCommand for run {cmd.run_id}: {e}", exc_info=True)
             raise
