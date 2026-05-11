@@ -1,10 +1,7 @@
 import hashlib
 import json
 import uuid
-import numpy as np
-from scipy.stats import wasserstein_distance
-from scipy.spatial.distance import cdist
-import ot
+import io
 from datetime import timezone
 from typing import Any, List, Optional, Protocol, Union, Dict
 from identa.core.domain.models import MetricSpec, MetricAggregate
@@ -15,15 +12,11 @@ from identa.core.domain.metrics import Metric
 from identa.core.domain.drift_engine import EnterpriseDriftEngine
 from identa.core.ports.artifacts import ArtifactPort
 from identa.core.ports.llm_judge import LLMJudgePort
-import io
 
-# ... [rest of the methods: _compute_suite_hash, _extract_suite_version] ...
 
 class EmbeddingProvider(Protocol):
-    def get_embedding(self, text: str) -> np.ndarray:
+    def get_embedding(self, text: str) -> list:
         ...
-
-# ... [EvaluationEngine class] ...
 
 
 def _compute_suite_hash(suite: List[Dict[str, Any]]) -> str:
@@ -56,19 +49,6 @@ class EvaluationEngine:
         self.embedding_provider = embedding_provider
         self.llm_judge = llm_judge
         self.drift_engine = EnterpriseDriftEngine(embedding_provider, llm_judge)
-
-    def calculate_semantic_drift(self, baseline_texts: List[str], current_texts: List[str]) -> float:
-        if not self.embedding_provider or not baseline_texts or not current_texts:
-            return 0.0
-
-        baseline_embeddings = np.array([self.embedding_provider.get_embedding(t) for t in baseline_texts])
-        current_embeddings = np.array([self.embedding_provider.get_embedding(t) for t in current_texts])
-
-        # 2-Wasserstein via optimal transport on cosine distance matrix
-        M = cdist(baseline_embeddings, current_embeddings, metric='cosine')
-        a = np.ones(len(baseline_embeddings)) / len(baseline_embeddings)
-        b = np.ones(len(current_embeddings)) / len(current_embeddings)
-        return float(ot.emd2(a, b, M))
 
     def evaluate(
         self,
