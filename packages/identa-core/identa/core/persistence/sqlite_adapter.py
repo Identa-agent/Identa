@@ -85,6 +85,28 @@ class ReproducibilityBundleModel(Base):
     seed = Column(Integer, nullable=True)
     evaluation_mode = Column(String, nullable=False)
 
+class DriftReportModel(Base):
+    __tablename__ = "drift_reports"
+    result_id = Column(String, ForeignKey("evaluation_results.id"), primary_key=True)
+    run_id = Column(String, nullable=False, index=True)
+    overall_drift = Column(Integer, nullable=False) # Boolean
+    max_severity = Column(String, nullable=False)
+    composite_score = Column(Text, nullable=False) # Store as String to avoid REAL precision issues or use REAL
+    root_cause_nodes = Column(Text, nullable=False) # JSON list
+    
+class DriftTestResultModel(Base):
+    __tablename__ = "drift_test_results"
+    id = Column(String, primary_key=True)
+    result_id = Column(String, ForeignKey("drift_reports.result_id"), nullable=False, index=True)
+    layer = Column(String, nullable=False)
+    metric_name = Column(String, nullable=False)
+    score = Column(Text, nullable=False)
+    raw_statistic = Column(Text, nullable=False)
+    is_drift = Column(Integer, nullable=False)
+    severity = Column(String, nullable=False)
+    affected_nodes = Column(Text, nullable=False) # JSON list
+    metadata_json = Column(Text, nullable=False) # JSON dict
+
 class SQLiteStorageAdapter(StoragePort):
     def __init__(self, database_url: str):
         try:
@@ -272,6 +294,34 @@ class SQLiteStorageAdapter(StoragePort):
                         count=agg.count
                     )
                     session.merge(agg_model)
+
+                # Save Drift Report if present
+                if result.drift_report:
+                    dr = result.drift_report
+                    dr_model = DriftReportModel(
+                        result_id=result.id,
+                        run_id=dr.run_id,
+                        overall_drift=1 if dr.overall_drift else 0,
+                        max_severity=dr.max_severity.value,
+                        composite_score=str(dr.composite_score),
+                        root_cause_nodes=json.dumps(dr.root_cause_nodes)
+                    )
+                    session.merge(dr_model)
+                    
+                    for i, r in enumerate(dr.layer_results):
+                        r_model = DriftTestResultModel(
+                            id=f"{result.id}_{r.layer.value}_{i}",
+                            result_id=result.id,
+                            layer=r.layer.value,
+                            metric_name=r.metric_name,
+                            score=str(r.score),
+                            raw_statistic=str(r.raw_statistic),
+                            is_drift=1 if r.is_drift else 0,
+                            severity=r.severity.value,
+                            affected_nodes=json.dumps(r.affected_nodes),
+                            metadata_json=json.dumps(r.metadata)
+                        )
+                        session.merge(r_model)
 
                 session.commit()
         except (SQLAlchemyError, sqlite3.Error) as e:
