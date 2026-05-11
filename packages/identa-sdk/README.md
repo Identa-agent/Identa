@@ -10,10 +10,22 @@ The user-facing toolkit for evaluating and migrating LLM-based agents. Identa pr
 pip install identa-sdk
 ```
 
-## Features
+## How to Use the SDK
 
-### 1. Evaluation Engine
-The `evaluate` function executes your agent against test suites and computes metrics across your agent's graph/flow.
+The Identa SDK is designed for zero-friction integration with your existing agent frameworks.
+
+### 1. Configure Your Workspace
+
+Before running evaluations, initialize your workspace and database connection:
+
+```python
+import identa
+
+identa.set_workspace("travel_agent_evals", db_url="sqlite:///identa.db")
+```
+
+### 2. Evaluation Engine
+The `evaluate` function executes your agent against test suites and computes metrics across your agent's graph/flow. Framework adapters are auto-detected.
 
 ```python
 import identa

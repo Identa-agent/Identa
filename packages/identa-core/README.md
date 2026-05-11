@@ -39,6 +39,44 @@ Identa Core supports two distinct evaluation pipelines:
 
 Configure your pipeline via `EvaluationConfig.drift_mode`.
 
+## How to Use Core
+
+While typical users will interact with the `identa-sdk`, developers building custom evaluation pipelines or extending Identa can use `identa-core` directly.
+
+### 1. Executing CQRS Commands
+
+The core relies on a strict command-query separation. You can mutate state by dispatching commands:
+
+```python
+from identa.core.domain.models import Run
+from identa.core.application.commands import StartRunCommand
+from identa.core.ports.storage import SQLiteStorageAdapter
+
+# Initialize storage
+storage = SQLiteStorageAdapter("sqlite:///identa.db")
+
+# Execute a command directly
+command = StartRunCommand(workspace_id="default", run_name="test-run")
+run_record = command.execute(storage=storage)
+```
+
+### 2. Manual Tracing and Metrics
+
+If you are not using the SDK's auto-instrumentation, you can manually construct spans and evaluate them:
+
+```python
+from identa.core.domain.tracing import Span, TraceArtifact
+from identa.core.domain.evaluation import EvaluationEngine
+
+# Construct spans
+span = Span(node_id="llm_node", input={"prompt": "hi"}, output="hello")
+trace = TraceArtifact(spans=[span])
+
+# Evaluate
+engine = EvaluationEngine()
+metrics = engine.compute_metrics(trace)
+```
+
 ## Development
 
 This package is managed by `uv`.

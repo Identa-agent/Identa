@@ -7,7 +7,17 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Identa is an MLflow-shaped evaluation and migration substrate for notebook-driven agent experimentation. It provides a zero-friction experience for **LangGraph**, **PydanticAI**, and **LangChain** agents with multi-resolution performance tracking, structural drift detection, and automated model-binding migrations.
+Identa is a Behavioral Intelligence platform providing an MLflow-shaped evaluation and migration substrate for notebook-driven agent experimentation. It delivers a zero-friction experience for **LangGraph**, **PydanticAI**, and **LangChain** agents, ensuring developers have a comprehensive suite for multi-resolution performance tracking, structural drift detection, and automated model-binding migrations.
+
+## What is Identa?
+
+Identa serves as the foundational platform for agent observability, reproducibility, and rigorous evaluation. By bridging the gap between rapid experimentation and production readiness, it enables developers to:
+- **Track Agent Behavior:** Observe fine-grained execution metrics at the node level across your agent architectures.
+- **Detect Drift:** Identify both structural changes and behavioral shifts in your agents through advanced metrics and semantic evaluation (Standard, Vanguard, and Hybrid tracks).
+- **Automate Migrations:** Confidently swap underlying LLMs or toolings using structurally-aware migration plans.
+- **Reproduce Runs:** Persist full execution contexts to precisely replay and debug past interactions.
+
+By combining powerful **CLI workflows** with intuitive **SDK integration patterns**, Identa ensures that developers can seamlessly integrate robust behavioral analytics into their existing AI lifecycles.
 
 ## The Alignment Triangle 📐
 
@@ -69,10 +79,11 @@ with identa.start_run("gpt-4-baseline"):
 
 ## Drift Evaluation Modes
 
-Identa now supports two evaluation tracks for drift detection:
+Identa now supports three evaluation tracks for drift detection:
 
 - **Standard**: Industry standard statistical drift detection (Normalized Structural Drift + PSI Behavioral Drift).
 - **Vanguard**: State-of-the-art semantic/causal detection (Semantic Embedding Drift + LLM-as-a-Judge + Causal Bottleneck Analysis).
+- **Hybrid**: A comprehensive evaluation combining both Standard statistical observability and Vanguard semantic/causal detection for maximum coverage.
 
 You can switch between them when evaluating your agent:
 
@@ -92,7 +103,25 @@ identa run --drift-mode vanguard my_suite.toml
 ```
 
 ## CLI Usage
-...
+
+The Identa CLI provides powerful tools for managing runs and detecting behavioral drift across agent versions:
+
+```bash
+# Evaluate an agent with the vanguard drift mode
+identa run --drift-mode vanguard my_suite.toml
+
+# List recent runs
+identa runs list --workspace my_experiment
+
+# View details of a specific run
+identa runs show <run_id>
+
+# Compare two runs to detect structural and behavioral drift
+identa drift compare <run_id_A> <run_id_B>
+
+# Reproduce a past run against the current agent architecture
+identa drift reproduce <run_id>
+```
 
 ## Build & Development
 
