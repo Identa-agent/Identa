@@ -1684,6 +1684,24 @@ name = "identa"
 version = "0.4.9b1"
 source = { virtual = "." }
 
+[package.dev-dependencies]
+dev = [
+    { name = "langchain" },
+    { name = "langgraph" },
+    { name = "pydantic-ai" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "langchain", specifier = ">=1.2.15" },
+    { name = "langgraph", specifier = ">=1.1.9" },
+    { name = "pydantic-ai", specifier = ">=1.86.1" },
+    { name = "pytest", specifier = ">=7.0" },
+]
+
 [[package]]
 name = "identa-core"
 source = { editable = "packages/identa-core" }
