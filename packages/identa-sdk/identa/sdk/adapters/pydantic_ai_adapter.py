@@ -10,20 +10,48 @@ class PydanticAIAdapter(BaseAdapter):
     framework_name = "pydantic_ai"
 
     def inspect(self, agent: Any) -> AgentStructure:
-        # Phase 1: minimal stub — PydanticAI agents are linear.
-        # Returns a single-node structure so resolution="node" works.
-        from identa.core.domain.structure import AgentNode
+        from identa.core.domain.structure import AgentNode, AgentEdge
         import hashlib, json
+        
+        nodes = []
+        edges = []
+        
+        # LLM Root
         model_name = getattr(getattr(agent, "model", None), "model_name", "unknown")
-        node = AgentNode(
+        root_node = AgentNode(
             id="pydantic_ai_root",
             type="llm",
-            name="pydantic_ai_root",
+            name=f"pydantic_ai_root ({model_name})",
             model=model_name,
             id_stability="stable",
         )
-        version_hash = hashlib.sha256(json.dumps({"nodes": ["pydantic_ai_root"]}).encode()).hexdigest()
-        return AgentStructure(id=version_hash[:16], version_hash=version_hash, nodes=[node], edges=[])
+        nodes.append(root_node)
+        
+        # Tools
+        try:
+            # PydanticAI agents have ._function_tools or .tools depending on version
+            tools = getattr(agent, "_function_tools", {})
+            if not tools and hasattr(agent, "list_tools"):
+                tools = {t.name: t for t in agent.list_tools()}
+            
+            for tool_name, tool in tools.items():
+                tool_node = AgentNode(
+                    id=f"tool:{tool_name}",
+                    type="tool",
+                    name=tool_name,
+                    id_stability="stable"
+                )
+                nodes.append(tool_node)
+                edges.append(AgentEdge(from_node="pydantic_ai_root", to_node=f"tool:{tool_name}"))
+        except Exception:
+            pass
+
+        struct_data = {
+            "nodes": sorted(n.id for n in nodes),
+            "edges": [(e.from_node, e.to_node) for e in sorted(edges, key=lambda x: (x.from_node, x.to_node))],
+        }
+        version_hash = hashlib.sha256(json.dumps(struct_data).encode()).hexdigest()
+        return AgentStructure(id=version_hash[:16], version_hash=version_hash, nodes=nodes, edges=edges)
 
     def wrap(self, agent: Any) -> WrappedAgent:
         # Note: agent is never mutated.
