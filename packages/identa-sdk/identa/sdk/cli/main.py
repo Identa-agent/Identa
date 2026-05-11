@@ -123,11 +123,33 @@ def reproduce(ctx, run_id):
         else:
             click.echo(f"✅ {fw} version matches ({version}).")
 
-from identa.sdk.api import evaluate, set_workspace
+@cli.group()
+def baselines():
+    """Manage baselines"""
+    pass
+
+@baselines.command(name="list")
+@click.option('--workspace', required=True, help='Workspace ID')
+@click.pass_context
+def list_baselines(ctx, workspace):
+    storage = ctx.obj['storage']
+    baselines = storage.list_baselines(workspace)
+    for b in baselines:
+        click.echo(f"{b.name} -> {b.run_id} (registered at {b.registered_at})")
+
+@baselines.command(name="register")
+@click.argument('run_id')
+@click.option('--name', default='default', help='Baseline name')
+@click.pass_context
+def register_baseline(ctx, run_id, name):
+    from identa.sdk.api import register_baseline as api_register
+    # Ensure workspace is set if possible, or use the storage from context
+    api_register(run_id, name)
+    click.echo(f"Run {run_id} registered as baseline '{name}'")
+
+from identa.sdk.api import evaluate, set_workspace, start_run
 from identa.sdk.suites import load_suite
 from identa.sdk.cli.ci import ci as ci_cmd
-
-# ... existing code ...
 
 @cli.command()
 @click.option('--workspace', required=True)
@@ -147,17 +169,18 @@ def run(workspace, agent_file, agent_symbol, drift_mode, format, suite_file):
     set_workspace(workspace)
     suite = load_suite(suite_file)
 
-    results = evaluate(agent, suite, drift_mode=drift_mode, resolution="node")
-    
-    if format == 'json':
-        click.echo(results.model_dump_json())
-    else:
-        click.echo(results.summary())
-        if results.drift_report:
-            click.echo(results.drift_report.summary())
-    
-    if results.structure_delta and results.structure_delta.normalized_structural_drift > 0.1:
-        if format == 'text':
-            click.echo("⚠️ Structural drift detected!")
+    with start_run(f"cli_run_{suite_file}") as _:
+        results = evaluate(agent, suite, drift_mode=drift_mode, resolution="node")
+        
+        if format == 'json':
+            click.echo(results.model_dump_json())
+        else:
+            click.echo(results.summary())
+            if results.drift_report:
+                click.echo(results.drift_report.summary())
+        
+        if results.structure_delta and results.structure_delta.normalized_structural_drift > 0.1:
+            if format == 'text':
+                click.echo("⚠️ Structural drift detected!")
 
 cli.add_command(ci_cmd, name="ci")

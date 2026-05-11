@@ -1,6 +1,9 @@
 import sys
 import importlib.metadata
+import logging
 from typing import Any, Dict, Optional, List
+
+logger = logging.getLogger(__name__)
 from identa.core.domain.models import ReproducibilityBundle
 from identa.core.domain.evaluation import EvaluationEngine
 from identa.core.domain.structure import AgentStructure
@@ -25,7 +28,7 @@ class ReproductionEngine:
                 if strict_structure:
                     raise ValueError(f"Structural drift detected: {bundle.structure_hash} != {current_structure.version_hash}")
                 else:
-                    print(f"Warning: Structural drift detected. Original: {bundle.structure_hash}, Current: {current_structure.version_hash}")
+                    logger.warning(f"Structural drift detected. Original: {bundle.structure_hash}, Current: {current_structure.version_hash}")
 
         # Reconstruct evaluation
         return self.engine.evaluate(

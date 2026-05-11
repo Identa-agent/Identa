@@ -1,8 +1,9 @@
-import numpy as np
-from collections import Counter, defaultdict
 from typing import List, Dict, Tuple
-from scipy.spatial.distance import jensenshannon
-import scipy.stats as stats
+from collections import Counter, defaultdict
+from identa.core.utils.lazy import lazy_import
+np = lazy_import("numpy")
+_scipy_spatial_dist = lazy_import("scipy.spatial.distance")
+stats = lazy_import("scipy.stats")
 
 class BehavioralDriftAnalyzer:
     def __init__(self):
@@ -43,7 +44,7 @@ class BehavioralDriftAnalyzer:
         p = (p + 1e-10) / (p + 1e-10).sum()
         q = (q + 1e-10) / (q + 1e-10).sum()
         
-        js_div = jensenshannon(p, q, base=2)
+        js_div = _scipy_spatial_dist.jensenshannon(p, q, base=2)
         if np.isnan(js_div):
             js_div = 0.0
         
@@ -107,7 +108,7 @@ class BehavioralDriftAnalyzer:
             if n > 0:
                 pi_base = stationary(P_base)
                 pi_curr = stationary(P_curr)
-                stat_dist = jensenshannon(pi_base + 1e-10, pi_curr + 1e-10, base=2)
+                stat_dist = _scipy_spatial_dist.jensenshannon(pi_base + 1e-10, pi_curr + 1e-10, base=2)
                 if np.isnan(stat_dist):
                     stat_dist = 0.0
             else:
@@ -119,7 +120,7 @@ class BehavioralDriftAnalyzer:
         node_drifts = {}
         for node in all_nodes:
             i = node_idx[node]
-            js = jensenshannon(P_base[i] + 1e-10, P_curr[i] + 1e-10, base=2)
+            js = _scipy_spatial_dist.jensenshannon(P_base[i] + 1e-10, P_curr[i] + 1e-10, base=2)
             node_drifts[node] = 0.0 if np.isnan(js) else float(js)
         
         # Composite behavioral score

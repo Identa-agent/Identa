@@ -1,8 +1,9 @@
-import numpy as np
 from typing import List, Optional, Tuple, Dict
-from scipy.spatial.distance import pdist, squareform
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import cross_val_score
+from identa.core.utils.lazy import lazy_import
+np = lazy_import("numpy")
+_scipy_spatial_dist = lazy_import("scipy.spatial.distance")
+_sklearn_linear = lazy_import("sklearn.linear_model")
+_sklearn_model = lazy_import("sklearn.model_selection")
 import warnings
 
 class SemanticDriftAnalyzer:
@@ -13,11 +14,25 @@ class SemanticDriftAnalyzer:
     def _get_embeddings(self, texts: List[str]) -> np.ndarray:
         if self.embedding_provider is None:
             raise ValueError("EmbeddingProvider required for semantic drift")
-        return np.array([self.embedding_provider.get_embedding(t) for t in texts])
+        
+        # Check if provider supports batching
+        if hasattr(self.embedding_provider, "get_embeddings"):
+            return np.array(self.embedding_provider.get_embeddings(texts))
+        
+        # Fallback with batching to avoid overwhelming APIs
+        import time
+        results = []
+        batch_size = 20
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i+batch_size]
+            results.extend([self.embedding_provider.get_embedding(t) for t in batch])
+            if i + batch_size < len(texts):
+                time.sleep(0.1) # Small delay between batches
+        return np.array(results)
 
     def _median_heuristic(self, X: np.ndarray) -> float:
         """Median heuristic for RBF bandwidth."""
-        dists = pdist(X, metric='euclidean')
+        dists = _scipy_spatial_dist.pdist(X, metric='euclidean')
         median_dist = np.median(dists) if len(dists) > 0 else 0.0
         if median_dist == 0:
             # Fallback for identical embeddings
@@ -45,7 +60,7 @@ class SemanticDriftAnalyzer:
         
         # Kernel matrices
         XY = np.vstack([X, Y])
-        sq_dists = squareform(pdist(XY, metric='sqeuclidean'))
+        sq_dists = _scipy_spatial_dist.squareform(_scipy_spatial_dist.pdist(XY, metric='sqeuclidean'))
         K = np.exp(-gamma * sq_dists)
         
         Kxx = K[:n, :n]
@@ -101,11 +116,11 @@ class SemanticDriftAnalyzer:
         y = np.array([0] * len(X_base) + [1] * len(X_curr))
         
         # Logistic regression with strong regularization (we want to detect drift, not overfit)
-        clf = LogisticRegression(max_iter=1000, C=0.1, random_state=42)
+        clf = _sklearn_linear.LogisticRegression(max_iter=1000, C=0.1, random_state=42)
         
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            scores = cross_val_score(clf, X, y, cv=cv_folds, scoring='roc_auc')
+            scores = _sklearn_model.cross_val_score(clf, X, y, cv=cv_folds, scoring='roc_auc')
         
         auc = scores.mean()
         auc_std = scores.std()

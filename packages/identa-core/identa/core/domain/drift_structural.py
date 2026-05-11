@@ -1,5 +1,6 @@
-import numpy as np
-import networkx as nx
+from identa.core.utils.lazy import lazy_import
+np = lazy_import("numpy")
+nx = lazy_import("networkx")
 from typing import List, Dict, Set, Tuple
 from identa.core.domain.structure import AgentStructure
 

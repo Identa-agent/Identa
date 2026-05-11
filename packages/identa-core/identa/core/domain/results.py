@@ -30,6 +30,7 @@ class EvaluationResult(BaseModel):
     suite_version: str
     structure_hash: Optional[str] = None
     resolution: Literal["boundary", "node", "tool", "llm"]
+    evaluation_mode: str = "controlled"
     metric_specs: List[MetricSpec]
     aggregates: List[MetricAggregate]
     per_test: List[PerTestResult]

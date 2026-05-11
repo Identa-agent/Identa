@@ -63,7 +63,8 @@ class EvaluationEngine:
         baseline_structure: Optional[AgentStructure] = None,
         baseline_traces: Optional[List[List[str]]] = None,
         baseline_node_outputs: Optional[Dict[str, List[Any]]] = None,
-        drift_mode: str = "standard"
+        drift_mode: str = "standard",
+        max_concurrency: int = 1
     ) -> EvaluationResult:
         # [Inside evaluate]
         # ... logic ...
@@ -91,40 +92,24 @@ class EvaluationEngine:
                 else:
                     resolved_metrics.append(m)
 
-        # 3. Evaluation Loop
-        for test in suite:
+        def run_one(test):
             test_id = test.get("id", str(uuid.uuid4()))
             test_input = test.get("input")
             expected = test.get("expected")
-            
+    
             # Start Trace
             TracingService.start_trace(structure_hash=structure_hash)
-            
+    
             # Execute Agent
             output = agent(test_input)
-            current_texts.append(str(output))
             
             # End Trace
             trace = TracingService.end_trace()
             
-            if trace:
-                current_traces.append(trace.node_sequence)
-                for span in trace.spans:
-                    if span.metadata.node_id:
-                        nid = span.metadata.node_id
-                        observed_nodes_across_suite[nid] = observed_nodes_across_suite.get(nid, 0) + 1
-                        current_node_outputs.setdefault(nid, []).append(span.outputs)
-            
-            trace_id = None
-            if trace and self.artifact_port:
-                content = trace.to_gzip_jsonl()
-                trace_id = self.artifact_port.save_artifact(run_id, f"trace_{test_id}.jsonl.gz", io.BytesIO(content))
-                trace_refs.append(trace_id)
-            
             # Compute Metrics
             scores = {}
             node_scores = {} # { node_id: { metric: score } }
-
+    
             for m_spec in resolved_metrics:
                 metric_impl = self.metrics_registry.get(m_spec.metric)
                 if metric_impl:
@@ -149,20 +134,59 @@ class EvaluationEngine:
                                 structure_hash=trace.structure_hash,
                                 spans=node_spans
                             )
-                            # Note: node_input/output/expected might differ from test-level, 
-                            # but for now we pass overall for simplicity or use span metadata.
-                            # Standard metrics like latency/cost work well here.
                             n_score = metric_impl.compute(test_input, output, expected, node_trace)
                             if node_id not in node_scores:
                                 node_scores[node_id] = {}
                             node_scores[node_id][m_spec.name] = n_score
 
-                    # Update aggregates (simple mean for now)
-                    if m_spec.name not in aggregates:
-                        aggregates[m_spec.name] = {"sum": 0.0, "count": 0}
-                    aggregates[m_spec.name]["sum"] += score
-                    aggregates[m_spec.name]["count"] += 1
+            trace_id = None
+            if trace and self.artifact_port:
+                content = trace.to_gzip_jsonl()
+                trace_id = self.artifact_port.save_artifact(run_id, f"trace_{test_id}.jsonl.gz", io.BytesIO(content))
 
+            return {
+                "test_id": test_id,
+                "input": test_input,
+                "expected": expected,
+                "output": output,
+                "scores": scores,
+                "node_scores": node_scores,
+                "trace": trace,
+                "trace_id": trace_id
+            }
+
+        if max_concurrency > 1:
+            from concurrent.futures import ThreadPoolExecutor
+            from contextvars import copy_context
+            with ThreadPoolExecutor(max_workers=max_concurrency) as executor:
+                futures = [executor.submit(copy_context().run, run_one, test) for test in suite]
+                loop_results = [f.result() for f in futures]
+        else:
+            loop_results = [run_one(test) for test in suite]
+
+        # 4. Process loop results
+        for res in loop_results:
+            test_id = res["test_id"]
+            test_input = res["input"]
+            expected = res["expected"]
+            output = res["output"]
+            scores = res["scores"]
+            node_scores = res["node_scores"]
+            trace = res["trace"]
+            trace_id = res["trace_id"]
+
+            current_texts.append(str(output))
+            if trace:
+                current_traces.append(trace.node_sequence)
+                for span in trace.spans:
+                    if span.metadata.node_id:
+                        nid = span.metadata.node_id
+                        observed_nodes_across_suite[nid] = observed_nodes_across_suite.get(nid, 0) + 1
+                        current_node_outputs.setdefault(nid, []).append(span.outputs)
+            
+            if trace_id:
+                trace_refs.append(trace_id)
+            
             per_test_results.append(PerTestResult(
                 test_id=test_id,
                 input=test_input,
@@ -172,6 +196,13 @@ class EvaluationEngine:
                 node_scores=node_scores,
                 trace_ref=trace_id
             ))
+            
+            # Update aggregates
+            for m_name, score in scores.items():
+                if m_name not in aggregates:
+                    aggregates[m_name] = {"sum": 0.0, "count": 0}
+                aggregates[m_name]["sum"] += score
+                aggregates[m_name]["count"] += 1
 
         # 4. Final Aggregates
         final_aggregates = [
@@ -231,6 +262,7 @@ class EvaluationEngine:
             suite_version=suite_version,
             structure_hash=structure_hash,
             resolution=resolution,
+            evaluation_mode=mode,
             metric_specs=resolved_metrics,
             aggregates=final_aggregates,
             per_test=per_test_results,

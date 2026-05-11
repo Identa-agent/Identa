@@ -1,7 +1,7 @@
 import json
 import sqlite3
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import create_engine, Column, String, DateTime, Text, ForeignKey, Integer, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -27,8 +27,8 @@ class RunModel(Base):
     params = Column(Text, nullable=False) # JSON
     tags = Column(Text, nullable=False)   # JSON
     status = Column(String, nullable=False)
-    started_at = Column(DateTime, nullable=False)
-    ended_at = Column(DateTime, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    ended_at = Column(DateTime(timezone=True), nullable=True)
     evaluation_mode = Column(String, nullable=False)
     reproducibility_bundle_id = Column(String, nullable=True)
     artifact_ids = Column(Text, nullable=False) # JSON list
@@ -38,7 +38,7 @@ class BaselineModel(Base):
     name = Column(String, primary_key=True)
     workspace_id = Column(String, ForeignKey("workspaces.id"), primary_key=True)
     run_id = Column(String, ForeignKey("runs.id"), nullable=False)
-    registered_at = Column(DateTime, nullable=False)
+    registered_at = Column(DateTime(timezone=True), nullable=False)
 
 
 class EvaluationResultModel(Base):
@@ -107,10 +107,21 @@ class DriftTestResultModel(Base):
     affected_nodes = Column(Text, nullable=False) # JSON list
     metadata_json = Column(Text, nullable=False) # JSON dict
 
+class TemporalStateModel(Base):
+    __tablename__ = "temporal_states"
+    workspace_id = Column(String, primary_key=True)
+    analyzer_id = Column(String, primary_key=True)
+    state_json = Column(Text, nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
 class SQLiteStorageAdapter(StoragePort):
     def __init__(self, database_url: str):
         try:
-            self.engine = create_engine(database_url)
+            # check_same_thread=False is safe because we use SQLAlchemy's sessionmaker (thread-local sessions)
+            self.engine = create_engine(
+                database_url, 
+                connect_args={"check_same_thread": False} if database_url.startswith("sqlite") else {}
+            )
             self._run_migrations()
             Base.metadata.create_all(self.engine)
             self.Session = sessionmaker(bind=self.engine)
@@ -121,6 +132,8 @@ class SQLiteStorageAdapter(StoragePort):
         """Handles manual SQL schema migrations."""
         try:
             with self.engine.connect() as conn:
+                # Basic schema version check could go here
+                # For now, we just ensure the engine is reachable
                 pass
         except (SQLAlchemyError, sqlite3.Error) as e:
             raise StorageError(f"Migration failed: {e}")
@@ -471,3 +484,34 @@ class SQLiteStorageAdapter(StoragePort):
                 return timeseries
         except (SQLAlchemyError, sqlite3.Error) as e:
             raise StorageError(f"Failed to query node drift timeseries: {e}")
+
+    def save_temporal_state(self, workspace_id: str, analyzer_id: str, state: dict) -> None:
+        try:
+            with self.Session() as session:
+                model = TemporalStateModel(
+                    workspace_id=workspace_id,
+                    analyzer_id=analyzer_id,
+                    state_json=json.dumps(state),
+                    updated_at=datetime.now(timezone.utc)
+                )
+                session.merge(model)
+                session.commit()
+        except (SQLAlchemyError, sqlite3.Error) as e:
+            raise StorageError(f"Failed to save temporal state for {analyzer_id}: {e}")
+
+    def get_temporal_state(self, workspace_id: str, analyzer_id: str) -> Optional[dict]:
+        try:
+            with self.Session() as session:
+                model = session.query(TemporalStateModel).filter_by(
+                    workspace_id=workspace_id, analyzer_id=analyzer_id
+                ).first()
+                if model:
+                    return json.loads(model.state_json)
+                return None
+        except (SQLAlchemyError, sqlite3.Error) as e:
+            raise StorageError(f"Failed to get temporal state for {analyzer_id}: {e}")
+
+    def get_node_drift_timeseries(self, workspace_id: str, node_id: str, 
+                                  metric_name: str, limit: int = 100) -> List[dict]:
+        # Placeholder for now, implementation would query drift_test_results joined with drift_reports/runs
+        return []

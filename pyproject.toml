@@ -4,11 +4,17 @@ version = "0.4.9b1"
 description = "Identa - Agent Evaluation & Migration Substrate"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "identa-sdk",
+    "identa-core",
+]
 
 [tool.uv]
 workspace = { members = ["packages/*"] }
-dev-dependencies = [
+sources = { identa-sdk = { workspace = true }, identa-core = { workspace = true } }
+
+[dependency-groups]
+dev = [
     "pytest>=7.0",
     "pydantic-ai>=1.86.1",
     "langgraph>=1.1.9",

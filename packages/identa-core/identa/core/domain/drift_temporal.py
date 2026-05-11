@@ -1,4 +1,5 @@
-import numpy as np
+from identa.core.utils.lazy import lazy_import
+np = lazy_import("numpy")
 from typing import List, Optional
 from collections import deque
 

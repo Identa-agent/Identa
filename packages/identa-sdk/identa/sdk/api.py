@@ -1,6 +1,9 @@
 import uuid
 import contextvars
+import logging
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 import asyncio
 from typing import Any, List, Optional, Union, Dict, Callable, Coroutine
 from identa.core.domain.models import Workspace, Run, MetricSpec, RunStatus, MetricAggregate
@@ -101,7 +104,31 @@ class IdentaClient:
         # 2. Run evaluation
         result = self.engine.evaluate(agent, suite, run_id, **kwargs)
         
-        # 3. Save updated temporal state
+        # 3. Capture Reproducibility Bundle
+        bundle_id = str(uuid.uuid4())
+        env_state = capture_environment(agent.original if hasattr(agent, 'original') else agent)
+        
+        from identa.core.domain.models import ReproducibilityBundle
+        bundle = ReproducibilityBundle(
+            id=bundle_id,
+            python_version=env_state["python_version"],
+            identa_version=env_state["identa_version"],
+            structure_hash=result.structure_hash or "unknown",
+            resolution=result.resolution,
+            hashes={"config": str(hash(str(suite)))}, # Simplified config hash
+            framework_versions=env_state["framework_versions"],
+            provider_models=env_state.get("provider_models", {}),
+            evaluation_mode=result.evaluation_mode
+        )
+        self.storage.save_reproducibility_bundle(bundle)
+        
+        # Update run with bundle ID
+        run = self.storage.get_run(run_id)
+        if run:
+            run.reproducibility_bundle_id = bundle_id
+            self.storage.save_run(run)
+
+        # 4. Save updated temporal state
         new_state = self.engine.drift_engine.temporal.get_state()
         self.storage.save_temporal_state(self.workspace_id, "overall_drift", new_state)
         
@@ -122,6 +149,13 @@ def set_workspace(name: str, db_url: str = "sqlite:///identa.db", tracking_uri: 
 def get_client() -> Optional[IdentaClient]:
     return _client_var.get()
 
+_run_var: contextvars.ContextVar[Optional["RunContext"]] = contextvars.ContextVar(
+    'identa_run', default=None
+)
+
+def get_current_run() -> Optional["RunContext"]:
+    return _run_var.get()
+
 class RunContext:
     """Context manager that wraps a Run and provides the user-facing run API."""
 
@@ -129,20 +163,24 @@ class RunContext:
         self.run = run
         self._client = client
         self._result: Optional[EvaluationResult] = None
+        self._token = None
 
     def __enter__(self) -> "RunContext":
+        self._token = _run_var.set(self)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
         """Finalize the run: mark finished or failed and persist the update."""
-        status = RunStatus.FAILED if exc_type is not None else RunStatus.FINISHED
-        try:
-            self._client.execute(FinishRunCommand(run_id=self.run.id, status=status))
-        except Exception as persistence_error:
-            # Log error: Failed to persist run closure.
-            if exc_type is None:
-                raise persistence_error # Re-raise if no prior exception existed
-        return False # Do not swallow the original exception
+        if self._token:
+            _run_var.reset(self._token)
+            
+        status = RunStatus.FINISHED if exc_type is None else RunStatus.FAILED
+        from identa.core.application.commands.run_commands import FinishRunCommand
+        self._client.run_handler.handle(FinishRunCommand(
+            run_id=self.run.id,
+            status=status
+        ))
+        return False # Propagate exceptions
 
     def log_params(self, params: Dict[str, Any]) -> None:
         """Attach key-value parameters to this run (persisted immediately)."""
@@ -199,8 +237,33 @@ def evaluate(agent: Any, suite: List[Dict[str, Any]], drift_mode: Optional[str] 
             kwargs["structure"] = structure
         wrapped = adapter.wrap(agent)
 
-    run_id = kwargs.pop("run_id", "standalone")
-    return client.evaluate(wrapped, suite, run_id=run_id, **kwargs)
+    # Pick up run_id from context if available
+    run_ctx = get_current_run()
+    default_run_id = run_ctx.run.id if run_ctx else "standalone"
+    run_id = kwargs.pop("run_id", default_run_id)
+    
+    result = client.evaluate(wrapped, suite, run_id=run_id, **kwargs)
+    
+    # If in a run context, automatically log the result
+    if run_ctx:
+        run_ctx.log_results(result)
+        
+    return result
+
+def register_baseline(run_id: str, name: str = "default"):
+    """Registers a run as a named baseline for future comparisons."""
+    client = get_client()
+    if not client:
+        raise ValueError("Call set_workspace first")
+    
+    from identa.core.domain.models import Baseline
+    baseline = Baseline(
+        name=name,
+        workspace_id=client.workspace_id,
+        run_id=run_id,
+        registered_at=datetime.now(timezone.utc)
+    )
+    client.storage.save_baseline(baseline)
 
 def inspect(agent: Any) -> "AgentStructure":
     """Optional: inspect an agent without running a suite."""
@@ -231,7 +294,7 @@ def assert_no_regressions(result: EvaluationResult, baseline_name: str = "defaul
     comparison = compare_to_baseline(result, baseline_name)
     if comparison.regressions:
         raise AssertionError(f"Regressions detected: {', '.join(comparison.regressions)}\n{comparison.report()}")
-    print(f"✅ No regressions detected against baseline '{baseline_name}'")
+    logger.info(f"✅ No regressions detected against baseline '{baseline_name}'")
 
 def reproduce(run_id: str, agent: Any, suite: List[Dict[str, Any]], **kwargs):
     """Reproduces a past run by checking environmental and structural parity."""
@@ -276,12 +339,16 @@ def reproduce(run_id: str, agent: Any, suite: List[Dict[str, Any]], **kwargs):
         except Exception:
             pass
     
+    if not isinstance(agent, WrappedAgent):
+        adapter = AgentRegistry.detect(agent)
+        agent = adapter.wrap(agent)
+        
     return client.repro_engine.reproduce(
         bundle=bundle,
         agent=agent,
         suite=suite,
         current_structure=current_structure,
-        strict_structure=kwargs.pop("strict_structure", False),
+        **kwargs
     )
 
 def export_to_mlflow(result: EvaluationResult, tracking_uri: Optional[str] = None) -> str:
@@ -322,20 +389,9 @@ async def evaluate_async(agent: Any, suite: List[Dict[str, Any]],
     if not client:
         raise ValueError("Call set_workspace first")
     
-    semaphore = asyncio.Semaphore(max_concurrency)
-    
-    async def run_one(test):
-        async with semaphore:
-            # Wrap sync agent in thread pool
-            loop = asyncio.get_running_loop()
-            # client.evaluate is sync, but it calls engine.evaluate which is also sync
-            res = await loop.run_in_executor(None, lambda: evaluate(agent, [test], **kwargs))
-            if res.semantic_drift > 0:
-                client.temporal_analyzer.update(res.semantic_drift)
-            return res
-    
-    results = await asyncio.gather(*[run_one(t) for t in suite])
-    return _merge_results(results)
+    kwargs["max_concurrency"] = max_concurrency
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: evaluate(agent, suite, **kwargs))
 
 def _merge_results(results: List[EvaluationResult]) -> EvaluationResult:
     if not results:

@@ -1,7 +1,6 @@
 from enum import Enum
 from typing import List, Dict, Optional, Tuple, Any
 from pydantic import BaseModel, Field
-import numpy as np
 
 class DriftLayer(str, Enum):
     STRUCTURAL = "structural"

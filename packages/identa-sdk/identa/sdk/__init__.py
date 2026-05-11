@@ -10,7 +10,9 @@ from .api import (
     reproduce,
     export_to_mlflow,
     calibrate,
-    execute
+    execute,
+    get_client,
+    register_baseline
 )
 
 __all__ = [
@@ -24,5 +26,7 @@ __all__ = [
     "reproduce",
     "export_to_mlflow",
     "calibrate",
-    "execute"
+    "execute",
+    "get_client",
+    "register_baseline"
 ]
