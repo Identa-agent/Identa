@@ -77,13 +77,16 @@ class CausalAttributionAnalyzer:
         Not fully implementable without framework-specific injection, but the interface
         is what matters for enterprise.
         """
-        # This is a scaffold - actual implementation requires adapter support
-        # for injecting baseline outputs into specific nodes
-        raise NotImplementedError(
-            "Interventional replay requires framework-specific node injection. "
-            "Implement in LangGraphAdapter/PydanticAIAdapter."
-        )
-
+        if not hasattr(current_agent, "intervene_node"):
+            raise NotImplementedError(
+                f"The provided agent adapter ({type(current_agent).__name__}) does not support interventional replay. "
+                "Implement `intervene_node` context manager in the adapter."
+            )
+        
+        # Apply intervention
+        with current_agent.intervene_node(node_to_intervene, baseline_trace):
+            # Evaluate counterfactual
+            return evaluator(current_agent, suite)
     def analyze(self,
                 baseline_outputs: Dict[str, List[Any]],
                 current_outputs: Dict[str, List[Any]],

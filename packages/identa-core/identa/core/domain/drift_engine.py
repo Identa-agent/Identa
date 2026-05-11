@@ -7,11 +7,13 @@ from identa.core.domain.drift_causal import CausalAttributionAnalyzer
 from identa.core.domain.structure import AgentStructure
 
 class EnterpriseDriftEngine:
-    def __init__(self, embedding_provider=None):
+    def __init__(self, embedding_provider=None, llm_judge=None):
         self.structural = StructuralDriftAnalyzer()
         self.semantic = SemanticDriftAnalyzer(embedding_provider)
         self.behavioral = BehavioralDriftAnalyzer()
         self.causal = CausalAttributionAnalyzer()
+        self.llm_judge = llm_judge
+
     
     def detect(self,
                run_id: str,
@@ -23,12 +25,14 @@ class EnterpriseDriftEngine:
                current_traces: List[List[str]],
                baseline_node_outputs: Optional[Dict[str, List[Any]]] = None,
                current_node_outputs: Optional[Dict[str, List[Any]]] = None,
+               drift_mode: str = "hybrid",
                ) -> UnifiedDriftReport:
+
         
         results = []
         
         # L1: Structural
-        if baseline_structure and current_structure:
+        if drift_mode in ("standard", "hybrid") and baseline_structure and current_structure:
             struct = self.structural.analyze(baseline_structure, current_structure)
             results.append(DriftTestResult(
                 layer=DriftLayer.STRUCTURAL,
@@ -42,13 +46,23 @@ class EnterpriseDriftEngine:
                 recommendation="Review added/removed nodes before migration." if struct["is_drift"] else None,
             ))
         
-        # L2: Semantic
-        if baseline_texts and current_texts:
+        # L2: Semantic & LLM Judge
+        if drift_mode in ("vanguard", "hybrid") and baseline_texts and current_texts:
             sem = self.semantic.analyze(baseline_texts, current_texts)
+            semantic_score = sem["semantic_drift_score"]
+            
+            # Incorporate LLM Judge if available
+            if self.llm_judge:
+                total_q_drift = 0.0
+                for b_text, c_text in zip(baseline_texts, current_texts):
+                    total_q_drift += self.llm_judge.judge_drift(b_text, c_text)
+                qualitative_drift = total_q_drift / len(baseline_texts)
+                semantic_score = 0.6 * semantic_score + 0.4 * qualitative_drift
+            
             results.append(DriftTestResult(
                 layer=DriftLayer.SEMANTIC,
-                metric_name="mmd_classifier_ensemble",
-                score=sem["semantic_drift_score"],
+                metric_name="mmd_classifier_ensemble_with_judge" if self.llm_judge else "mmd_classifier_ensemble",
+                score=semantic_score,
                 raw_statistic=sem["mmd"],
                 p_value=sem["mmd_p_value"],
                 effect_size=sem["mmd_effect_size"],
@@ -58,7 +72,7 @@ class EnterpriseDriftEngine:
             ))
         
         # L3: Behavioral
-        if baseline_traces and current_traces:
+        if drift_mode in ("standard", "hybrid") and baseline_traces and current_traces:
             beh = self.behavioral.analyze(baseline_traces, current_traces)
             results.append(DriftTestResult(
                 layer=DriftLayer.BEHAVIORAL,
@@ -75,7 +89,7 @@ class EnterpriseDriftEngine:
         
         # L4: Causal Attribution
         root_causes = []
-        if baseline_node_outputs and current_node_outputs and results:
+        if drift_mode in ("vanguard", "hybrid") and baseline_node_outputs and current_node_outputs and results:
             # Use semantic score as the metric function for attribution
             def coalition_metric(outputs):
                 texts = []

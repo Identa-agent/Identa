@@ -27,7 +27,12 @@ class PydanticAIAdapter(BaseAdapter):
 
     def wrap(self, agent: Any) -> WrappedAgent:
         # Note: agent is never mutated.
+        wrapped = WrappedAgent(callable=None, original=agent, framework_name=self.framework_name)
+        
         def traced(input_value: Any) -> Any:
+            if "pydantic_ai_root" in wrapped.interventions:
+                return wrapped.interventions["pydantic_ai_root"]
+                
             prompt = input_value if isinstance(input_value, str) else input_value.get("query") or str(input_value)
             model_name = getattr(getattr(agent, "model", None), "model_name", None)
             span_id = TracingService.start_span(
@@ -46,7 +51,9 @@ class PydanticAIAdapter(BaseAdapter):
                 return getattr(res, "output", getattr(res, "data", res))
             finally:
                 TracingService.end_span(span_id)
-        return WrappedAgent(callable=traced, original=agent, framework_name=self.framework_name)
+                
+        wrapped.callable = traced
+        return wrapped
 
 def _mutate_pydantic_ai(agent, plan: MigrationPlan):
     for change in plan.changes:

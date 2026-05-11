@@ -28,3 +28,13 @@ try:
     AgentRegistry.register(_is_pydantic_ai, PydanticAIAdapter, name="pydantic_ai")
 except ImportError:
     pass  # pydantic-ai not installed — adapter silently skipped.
+
+try:
+    from identa.sdk.adapters.langchain_adapter import LangChainAdapter
+
+    def _is_langchain(agent: object) -> bool:
+        return type(agent).__module__.startswith("langchain.") or type(agent).__module__.startswith("langchain_core.")
+
+    AgentRegistry.register(_is_langchain, LangChainAdapter, name="langchain")
+except ImportError:
+    pass  # langchain not installed — adapter silently skipped.

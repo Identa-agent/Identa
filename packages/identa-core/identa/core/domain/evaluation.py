@@ -55,7 +55,7 @@ class EvaluationEngine:
         self.artifact_port = artifact_port
         self.embedding_provider = embedding_provider
         self.llm_judge = llm_judge
-        self.drift_engine = EnterpriseDriftEngine(embedding_provider)
+        self.drift_engine = EnterpriseDriftEngine(embedding_provider, llm_judge)
 
     def calculate_semantic_drift(self, baseline_texts: List[str], current_texts: List[str]) -> float:
         if not self.embedding_provider or not baseline_texts or not current_texts:
@@ -86,14 +86,6 @@ class EvaluationEngine:
         drift_mode: str = "standard"
     ) -> EvaluationResult:
         # [Inside evaluate]
-        # Branching logic for drift_mode
-        qualitative_drift = 0.0
-        if drift_mode == "vanguard":
-            # Initialize/Run advanced models (scaffold for now)
-            pass
-        elif drift_mode == "standard":
-            # Standard stats
-            pass
         # ... logic ...
         per_test_results = []
         aggregates = {}
@@ -187,32 +179,19 @@ class EvaluationEngine:
         semantic_drift = 0.0
         drift_report = None
         
-        if drift_mode == "enterprise":
-            drift_report = self.drift_engine.detect(
-                run_id=run_id,
-                baseline_structure=baseline_structure,
-                current_structure=structure,
-                baseline_texts=baseline_texts or [],
-                current_texts=current_texts,
-                baseline_traces=baseline_traces or [],
-                current_traces=current_traces,
-                baseline_node_outputs=baseline_node_outputs,
-                current_node_outputs=current_node_outputs,
-            )
-            semantic_drift = drift_report.composite_score
-        elif baseline_texts:
-            semantic_drift = self.calculate_semantic_drift(baseline_texts, current_texts)
-            
-            if drift_mode == "vanguard" and self.llm_judge:
-                # Pairwise judge between baseline and current outputs
-                total_q_drift = 0.0
-                for b_text, c_text in zip(baseline_texts, current_texts):
-                    total_q_drift += self.llm_judge.judge_drift(b_text, c_text)
-                qualitative_drift = total_q_drift / len(baseline_texts)
-                
-                # Combine with semantic drift (0.6 semantic, 0.4 qualitative)
-                semantic_drift = 0.6 * semantic_drift + 0.4 * qualitative_drift
-        
+        drift_report = self.drift_engine.detect(
+            run_id=run_id,
+            baseline_structure=baseline_structure,
+            current_structure=structure,
+            baseline_texts=baseline_texts or [],
+            current_texts=current_texts,
+            baseline_traces=baseline_traces or [],
+            current_traces=current_traces,
+            baseline_node_outputs=baseline_node_outputs,
+            current_node_outputs=current_node_outputs,
+            drift_mode=drift_mode,
+        )
+        semantic_drift = drift_report.composite_score        
         # 5. Compute Structure Delta
         structure_delta = None
         if resolution != "boundary":

@@ -91,6 +91,7 @@ class LangGraphAdapter(BaseAdapter):
 
     def wrap(self, graph: Any) -> WrappedAgent:
         original_invoke = graph.invoke
+        wrapped = WrappedAgent(callable=None, original=graph, framework_name=self.framework_name)
         
         def traced(input_value: Any, config: Optional[Dict[str, Any]] = None, **kwargs: Any) -> Any:
             span_id = TracingService.start_span(
@@ -106,12 +107,26 @@ class LangGraphAdapter(BaseAdapter):
             if not any(isinstance(c, IdentaLangGraphCallback) for c in callbacks):
                 safe_config["callbacks"] = list(callbacks) + [IdentaLangGraphCallback()]
                 
+            original_nodes = {}
             try:
+                # Basic injection mechanism for LangGraph nodes
+                if wrapped.interventions and hasattr(graph, "nodes"):
+                    from langchain_core.runnables import RunnableLambda
+                    for node_id, mock_out in wrapped.interventions.items():
+                        if node_id in graph.nodes:
+                            original_nodes[node_id] = graph.nodes[node_id]
+                            graph.nodes[node_id] = RunnableLambda(lambda x, m=mock_out: m)
+                            
                 return original_invoke(input_value, config=safe_config, **kwargs)
             finally:
                 TracingService.end_span(span_id)
+                # Restore nodes
+                for node_id, orig_node in original_nodes.items():
+                    if hasattr(graph, "nodes"):
+                        graph.nodes[node_id] = orig_node
                 
-        return WrappedAgent(callable=traced, original=graph, framework_name=self.framework_name)
+        wrapped.callable = traced
+        return wrapped
 
 def _mutate_langgraph(agent, plan: MigrationPlan):
     for change in plan.changes:
