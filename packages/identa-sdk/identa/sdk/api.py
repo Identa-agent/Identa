@@ -233,14 +233,44 @@ def reproduce(run_id: str, agent: Any, suite: List[Dict[str, Any]], **kwargs):
         
     if not run.reproducibility_bundle_id:
         raise ValueError(f"Run {run_id} has no reproducibility bundle")
-        
-    # We'd need a method to get bundle by ID, but storage doesn't have it yet.
-    # For now, we'll assume it's stored in a way we can retrieve or we bypass.
-    # Placeholder: assuming bundle retrieval works or is mocked.
-    print(f"🔄 Reproducing run {run_id}...")
     
-    # Simple delegation to engine for now
-    return evaluate(agent, suite, run_id=f"repro_{run_id}", **kwargs)
+    bundle = client.storage.get_reproducibility_bundle(run.reproducibility_bundle_id)
+    if not bundle:
+        raise ValueError(f"Reproducibility bundle {run.reproducibility_bundle_id} not found in storage")
+    
+    # Validate environmental parity
+    current_env = capture_environment(agent)
+    
+    if current_env["python_version"] != bundle.python_version:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Python version mismatch: bundle=%s, current=%s",
+            bundle.python_version, current_env["python_version"]
+        )
+    
+    for fw, version in bundle.framework_versions.items():
+        curr_v = current_env["framework_versions"].get(fw)
+        if curr_v and curr_v != version:
+            import logging
+            logging.getLogger(__name__).warning(
+                "%s version mismatch: bundle=%s, current=%s", fw, version, curr_v
+            )
+    
+    # Inspect current structure if resolution requires it
+    current_structure = kwargs.pop("structure", None)
+    if bundle.resolution in ("node", "tool", "llm") and current_structure is None:
+        try:
+            current_structure = inspect(agent)
+        except Exception:
+            pass
+    
+    return client.repro_engine.reproduce(
+        bundle=bundle,
+        agent=agent,
+        suite=suite,
+        current_structure=current_structure,
+        strict_structure=kwargs.pop("strict_structure", False),
+    )
 
 def export_to_mlflow(result: EvaluationResult, tracking_uri: Optional[str] = None) -> str:
     """Exports an evaluation result to MLflow."""
