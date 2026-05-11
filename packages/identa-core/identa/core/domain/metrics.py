@@ -2,7 +2,7 @@ import math
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Dict
 from identa.core.domain.tracing import TraceArtifact
-from pydantic import BaseModel
+from identa.core.domain.models import CostModel
 
 class Metric(ABC):
     @abstractmethod
@@ -44,11 +44,6 @@ class LatencyMetric(Metric):
             return 0.0
         # Sum of all top-level spans or just the duration of the whole trace
         return sum(s.timing.latency_ms for s in trace.spans if s.parent_id is None)
-
-class CostModel(BaseModel):
-    model: str
-    input_cost_per_1k: float
-    output_cost_per_1k: float
 
 class CostMetric(Metric):
     def __init__(self, cost_model: CostModel):
