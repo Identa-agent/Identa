@@ -123,12 +123,40 @@ class EvaluationEngine:
             
             # Compute Metrics
             scores = {}
+            node_scores = {} # { node_id: { metric: score } }
+
             for m_spec in resolved_metrics:
                 metric_impl = self.metrics_registry.get(m_spec.metric)
                 if metric_impl:
+                    # Overall score
                     score = metric_impl.compute(test_input, output, expected, trace)
                     scores[m_spec.name] = score
                     
+                    # Per-node scores if trace is available
+                    if trace and trace.spans:
+                        # Group spans by node
+                        nodes_in_trace = {}
+                        for span in trace.spans:
+                            if span.node_id:
+                                if span.node_id not in nodes_in_trace:
+                                    nodes_in_trace[span.node_id] = []
+                                nodes_in_trace[span.node_id].append(span)
+                        
+                        for node_id, node_spans in nodes_in_trace.items():
+                            # Create a sub-trace for this node
+                            node_trace = trace.__class__(
+                                id=f"{trace.id}_{node_id}",
+                                structure_hash=trace.structure_hash,
+                                spans=node_spans
+                            )
+                            # Note: node_input/output/expected might differ from test-level, 
+                            # but for now we pass overall for simplicity or use span metadata.
+                            # Standard metrics like latency/cost work well here.
+                            n_score = metric_impl.compute(test_input, output, expected, node_trace)
+                            if node_id not in node_scores:
+                                node_scores[node_id] = {}
+                            node_scores[node_id][m_spec.name] = n_score
+
                     # Update aggregates (simple mean for now)
                     if m_spec.name not in aggregates:
                         aggregates[m_spec.name] = {"sum": 0.0, "count": 0}
@@ -141,7 +169,7 @@ class EvaluationEngine:
                 expected=expected,
                 output=output,
                 scores=scores,
-                node_scores={},
+                node_scores=node_scores,
                 trace_ref=trace_id
             ))
 
