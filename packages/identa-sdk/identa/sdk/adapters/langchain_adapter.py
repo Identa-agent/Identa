@@ -11,14 +11,35 @@ class LangChainAdapter(BaseAdapter):
     framework_name = "langchain"
 
     def inspect(self, agent: Any) -> AgentStructure:
-        # Minimal structural inspection for LangChain chains/runnables
         nodes = []
+        edges = []
+        
         try:
-            # Try to get the name of the runnable
-            name = getattr(agent, "name", None) or type(agent).__name__
-            nodes.append(AgentNode(
-                id=name, type="chain", name=name, id_stability="stable"
-            ))
+            if hasattr(agent, "get_graph"):
+                graph = agent.get_graph()
+                # LangChain/LangGraph Graph object
+                for nid, node in graph.nodes.items():
+                    name = str(node.data) if hasattr(node, "data") else nid
+                    nodes.append(AgentNode(
+                        id=nid,
+                        type="node",
+                        name=name,
+                        id_stability="stable"
+                    ))
+                
+                from identa.core.domain.structure import AgentEdge
+                for edge in graph.edges:
+                    edges.append(AgentEdge(
+                        from_node=edge.source,
+                        to_node=edge.target
+                    ))
+            
+            if not nodes:
+                # Fallback to name-based inspection
+                name = getattr(agent, "name", None) or type(agent).__name__
+                nodes.append(AgentNode(
+                    id=name, type="chain", name=name, id_stability="stable"
+                ))
         except Exception:
             pass
 
@@ -29,10 +50,10 @@ class LangChainAdapter(BaseAdapter):
 
         struct_data = {
             "nodes": sorted(n.id for n in nodes),
-            "edges": [],
+            "edges": [(e.from_node, e.to_node) for e in sorted(edges, key=lambda x: (x.from_node, x.to_node))],
         }
         version_hash = hashlib.sha256(json.dumps(struct_data).encode()).hexdigest()
-        return AgentStructure(id=version_hash[:16], version_hash=version_hash, nodes=nodes, edges=[])
+        return AgentStructure(id=version_hash[:16], version_hash=version_hash, nodes=nodes, edges=edges)
 
     def wrap(self, agent: Any) -> WrappedAgent:
         wrapped = WrappedAgent(callable=None, original=agent, framework_name=self.framework_name)
