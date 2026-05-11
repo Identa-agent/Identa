@@ -50,44 +50,52 @@ class EnterpriseDriftEngine:
         
         # L2: Semantic & LLM Judge
         if drift_mode in ("vanguard", "hybrid") and baseline_texts and current_texts:
-            sem = self.semantic.analyze(baseline_texts, current_texts)
-            semantic_score = sem["semantic_drift_score"]
-            
-            # Incorporate LLM Judge if available
-            if self.llm_judge:
-                total_q_drift = 0.0
-                for b_text, c_text in zip(baseline_texts, current_texts):
-                    total_q_drift += self.llm_judge.judge_drift(b_text, c_text)
-                qualitative_drift = total_q_drift / len(baseline_texts)
-                semantic_score = 0.6 * semantic_score + 0.4 * qualitative_drift
-            
-            results.append(DriftTestResult(
-                layer=DriftLayer.SEMANTIC,
-                metric_name="mmd_classifier_ensemble_with_judge" if self.llm_judge else "mmd_classifier_ensemble",
-                score=semantic_score,
-                raw_statistic=sem["mmd"],
-                p_value=sem["mmd_p_value"],
-                effect_size=sem["mmd_effect_size"],
-                is_drift=sem["is_drift"],
-                severity=DriftSeverity(sem["severity"]),
-                recommendation="Semantic drift detected. Review prompt templates or model temperature." if sem["is_drift"] else None,
-            ))
+            try:
+                sem = self.semantic.analyze(baseline_texts, current_texts)
+                semantic_score = sem["semantic_drift_score"]
+                
+                # Incorporate LLM Judge if available
+                if self.llm_judge:
+                    total_q_drift = 0.0
+                    for b_text, c_text in zip(baseline_texts, current_texts):
+                        total_q_drift += self.llm_judge.judge_drift(b_text, c_text)
+                    qualitative_drift = total_q_drift / len(baseline_texts)
+                    semantic_score = 0.6 * semantic_score + 0.4 * qualitative_drift
+                
+                results.append(DriftTestResult(
+                    layer=DriftLayer.SEMANTIC,
+                    metric_name="mmd_classifier_ensemble_with_judge" if self.llm_judge else "mmd_classifier_ensemble",
+                    score=semantic_score,
+                    raw_statistic=sem["mmd"],
+                    p_value=sem["mmd_p_value"],
+                    effect_size=sem["mmd_effect_size"],
+                    is_drift=sem["is_drift"],
+                    severity=DriftSeverity(sem["severity"]),
+                    recommendation="Semantic drift detected. Review prompt templates or model temperature." if sem["is_drift"] else None,
+                ))
+            except ImportError as e:
+                import logging
+                logging.warning(f"Skipping Semantic Drift layer: {e}")
         
         # L3: Behavioral
         if drift_mode in ("standard", "hybrid") and baseline_traces and current_traces:
-            beh = self.behavioral.analyze(baseline_traces, current_traces)
-            results.append(DriftTestResult(
-                layer=DriftLayer.BEHAVIORAL,
-                metric_name="markov_path_ensemble",
-                score=beh["behavioral_drift_score"],
-                raw_statistic=beh["frobenius_norm"],
-                p_value=beh.get("path_p_value"),
-                is_drift=beh["is_drift"],
-                severity=DriftSeverity.HIGH if beh["is_drift"] else DriftSeverity.NONE,
-                affected_nodes=list(beh["node_transition_drifts"].keys()) if beh.get("node_transition_drifts") else [],
-                recommendation="Execution paths have shifted. Check router logic or tool selection." if beh["is_drift"] else None,
-                metadata={"node_drifts": beh.get("node_transition_drifts", {})}
-            ))
+            try:
+                beh = self.behavioral.analyze(baseline_traces, current_traces)
+                results.append(DriftTestResult(
+                    layer=DriftLayer.BEHAVIORAL,
+                    metric_name="markov_path_ensemble",
+                    score=beh["behavioral_drift_score"],
+                    raw_statistic=beh["frobenius_norm"],
+                    p_value=beh.get("path_p_value"),
+                    is_drift=beh["is_drift"],
+                    severity=DriftSeverity.HIGH if beh["is_drift"] else DriftSeverity.NONE,
+                    affected_nodes=list(beh["node_transition_drifts"].keys()) if beh.get("node_transition_drifts") else [],
+                    recommendation="Execution paths have shifted. Check router logic or tool selection." if beh["is_drift"] else None,
+                    metadata={"node_drifts": beh.get("node_transition_drifts", {})}
+                ))
+            except ImportError as e:
+                import logging
+                logging.warning(f"Skipping Behavioral Drift layer: {e}")
         
         # L4: Causal Attribution
         root_causes = []
@@ -135,25 +143,29 @@ class EnterpriseDriftEngine:
         
         # L5: Temporal
         if drift_mode in ("vanguard", "hybrid"):
-            # Use semantic score if available, otherwise use composite
-            temp_score = 0.0
-            sem_result = next((r for r in results if r.layer == DriftLayer.SEMANTIC), None)
-            if sem_result:
-                temp_score = sem_result.score
-            else:
-                temp_score = composite
-                
-            temp_info = self.temporal.update(temp_score)
-            results.append(DriftTestResult(
-                layer=DriftLayer.TEMPORAL,
-                metric_name="adwin_adaptive_windowing",
-                score=temp_info["mean"],
-                raw_statistic=temp_info["cumulative_mean"],
-                is_drift=temp_info["drift_detected"],
-                severity=DriftSeverity.HIGH if temp_info["drift_detected"] else DriftSeverity.NONE,
-                recommendation="Gradual temporal drift detected. Consider re-baselining or model fine-tuning." if temp_info["drift_detected"] else None,
-                metadata=temp_info
-            ))
+            try:
+                # Use semantic score if available, otherwise use composite
+                temp_score = 0.0
+                sem_result = next((r for r in results if r.layer == DriftLayer.SEMANTIC), None)
+                if sem_result:
+                    temp_score = sem_result.score
+                else:
+                    temp_score = composite
+                    
+                temp_info = self.temporal.update(temp_score)
+                results.append(DriftTestResult(
+                    layer=DriftLayer.TEMPORAL,
+                    metric_name="adwin_adaptive_windowing",
+                    score=temp_info["mean"],
+                    raw_statistic=temp_info["cumulative_mean"],
+                    is_drift=temp_info["drift_detected"],
+                    severity=DriftSeverity.HIGH if temp_info["drift_detected"] else DriftSeverity.NONE,
+                    recommendation="Gradual temporal drift detected. Consider re-baselining or model fine-tuning." if temp_info["drift_detected"] else None,
+                    metadata=temp_info
+                ))
+            except ImportError as e:
+                import logging
+                logging.warning(f"Skipping Temporal Drift layer: {e}")
 
         max_sev = DriftSeverity.NONE
         for r in results:

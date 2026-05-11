@@ -13,31 +13,37 @@ Identa Core is designed to be framework-agnostic and side-effect free. It enforc
 3.  **Application**:
     *   **Commands**: Mutation logic (Start Run, Log Results).
     *   **Queries**: Data retrieval logic (List Runs, Get Comparison).
-4.  **Persistence (Adapters)**: Concrete implementations of ports (SQLite, Local Filesystem).
+4.  **Persistence (Adapters)**: Concrete implementations of ports (SQLite, Postgres).
 
 ## Key Components
 
-- **Evaluation Engine**: The loop that executes agents against test suites and computes metrics.
-- **Tracing Service**: A context-aware span collector.
-- **Migration Engine**: Logic to validate and apply model-binding swaps.
+- **Evaluation Engine**: A high-concurrency engine that executes agents against test suites and computes metrics.
+- **Tracing Service**: A context-aware span collector with multi-threaded support.
+- **Drift Engine**: Multi-layer analysis (Structural, Semantic, Behavioral, Causal, Temporal).
 - **Reproduction Engine**: Logic to replay experiments with structural drift detection.
 
 ## Drift Analysis Tracks
 
-Identa Core supports two distinct evaluation pipelines:
+Identa Core supports three distinct evaluation pipelines:
 
 1. **Standard Track**: Robust, statistical observability.
    - Normalized Structural Drift (Jaccard Similarity).
-   - Behavioral Drift (Smoothed PSI).
-   - Feature Weighting (MetricSpec.weight).
+   - Behavioral Drift (Markov-Chain Transition Divergence).
+   - Node-level resolution.
 
 2. **Vanguard Track**: State-of-the-art semantic/causal detection.
-   - Semantic Embedding Drift (Wasserstein Distance).
+   - Semantic Embedding Drift (MMD + Classifier Ensemble).
    - LLM-as-a-Judge (Qualitative Drift scoring).
-   - Online Calibration (Dynamic Decision Boundaries).
-   - Causal Graph Inference (Root-Cause Bottleneck analysis).
+   - Causal Attribution (Shapley-based root cause analysis).
+   - Temporal Drift (ADWIN adaptive windowing).
 
-Configure your pipeline via `EvaluationConfig.drift_mode`.
+3. **Hybrid Track**: A combination of both for maximum coverage.
+
+*Note: Vanguard features require the `enterprise` extra.*
+
+## Graceful Degradation
+
+Identa Core is built for resiliency. The `EnterpriseDriftEngine` supports graceful degradation: if heavy ML dependencies (`numpy`, `scipy`) are missing, it will warn the user and skip advanced analysis layers instead of crashing the SDK.
 
 ## How to Use Core
 
@@ -45,44 +51,28 @@ While typical users will interact with the `identa-sdk`, developers building cus
 
 ### 1. Executing CQRS Commands
 
-The core relies on a strict command-query separation. You can mutate state by dispatching commands:
-
 ```python
 from identa.core.domain.models import Run
 from identa.core.application.commands import StartRunCommand
-from identa.core.ports.storage import SQLiteStorageAdapter
+from identa.core.persistence.sqlite_adapter import SQLiteStorageAdapter
 
 # Initialize storage
 storage = SQLiteStorageAdapter("sqlite:///identa.db")
 
-# Execute a command directly
+# Execute a command
 command = StartRunCommand(workspace_id="default", run_name="test-run")
 run_record = command.execute(storage=storage)
-```
-
-### 2. Manual Tracing and Metrics
-
-If you are not using the SDK's auto-instrumentation, you can manually construct spans and evaluate them:
-
-```python
-from identa.core.domain.tracing import Span, TraceArtifact
-from identa.core.domain.evaluation import EvaluationEngine
-
-# Construct spans
-span = Span(node_id="llm_node", input={"prompt": "hi"}, output="hello")
-trace = TraceArtifact(spans=[span])
-
-# Evaluate
-engine = EvaluationEngine()
-metrics = engine.compute_metrics(trace)
 ```
 
 ## Development
 
 This package is managed by `uv`.
-...
 
 ```bash
 # Run unit tests
 uv run pytest tests/
 ```
+
+## License
+
+Apache-2.0

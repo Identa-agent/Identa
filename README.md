@@ -39,10 +39,16 @@ This is a monorepo managed by [uv](https://docs.astral.sh/uv/).
 
 ### From PyPI (Recommended)
 
-To install the user-facing SDK:
+To install the user-facing SDK with all framework adapters:
 
 ```bash
-pip install identa-sdk
+pip install "identa-sdk[all]"
+```
+
+For full drift detection features (Enterprise), install the core with enterprise extras:
+
+```bash
+pip install "identa-core[enterprise]"
 ```
 
 ### From Source (Development)
@@ -55,7 +61,7 @@ pip install identa-sdk
    ```bash
    git clone https://github.com/identa-ai/identa.git
    cd identa
-   uv sync
+   uv sync --all-extras
    ```
 
 ## Quick Start
@@ -73,19 +79,18 @@ with identa.start_run("gpt-4-baseline"):
     results = identa.evaluate(
         agent=my_agent,   # Pass your LangGraph or PydanticAI object directly
         suite=[{"input": {"q": "hi"}, "expected": "hello"}],
-        resolution="node"
+        resolution="node",
+        max_concurrency=5 # Optional: run tests in parallel
     )
 ```
 
 ## Drift Evaluation Modes
 
-Identa now supports three evaluation tracks for drift detection:
+Identa supports three evaluation tracks for drift detection:
 
 - **Standard**: Industry standard statistical drift detection (Normalized Structural Drift + PSI Behavioral Drift).
 - **Vanguard**: State-of-the-art semantic/causal detection (Semantic Embedding Drift + LLM-as-a-Judge + Causal Bottleneck Analysis).
-- **Hybrid**: A comprehensive evaluation combining both Standard statistical observability and Vanguard semantic/causal detection for maximum coverage.
-
-You can switch between them when evaluating your agent:
+- **Hybrid**: A comprehensive evaluation combining both Standard statistical observability and Vanguard semantic/causal detection.
 
 ```python
 # Vanguard track example
@@ -96,57 +101,26 @@ results = identa.evaluate(
 )
 ```
 
-Or via the CLI:
-
-```bash
-identa run --drift-mode vanguard my_suite.toml
-```
-
 ## CLI Usage
 
 The Identa CLI provides powerful tools for managing runs and detecting behavioral drift across agent versions:
 
 ```bash
 # Evaluate an agent with the vanguard drift mode
-identa run --drift-mode vanguard my_suite.toml
+identa run --workspace my_project --drift-mode vanguard my_suite.toml
 
-# List recent runs
-identa runs list --workspace my_experiment
-
-# View details of a specific run
-identa runs show <run_id>
+# Manage baselines
+identa baselines register <run_id> --name v1-baseline
+identa baselines list --workspace my_project
 
 # Compare two runs to detect structural and behavioral drift
-identa drift compare <run_id_A> <run_id_B>
+identa compare <run_id_A> <run_id_B>
 
 # Reproduce a past run against the current agent architecture
-identa drift reproduce <run_id>
-```
+identa reproduce <run_id>
 
-## Build & Development
-
-Identa uses `hatchling` as the build backend and `uv` for workspace management.
-
-### Building Packages Locally
-
-To build the wheel and sdist for each package:
-
-```bash
-# Build identa-core
-uv build --package identa-core
-
-# Build identa-sdk
-uv build --package identa-sdk
-```
-
-The distributions will be located in the `dist/` directory.
-
-### Running Tests
-
-Run the full E2E suite:
-
-```bash
-uv run pytest tests/
+# Show Identa version
+identa version
 ```
 
 ## Architecture Summary
@@ -156,14 +130,6 @@ Identa follows a **Hexagonal Architecture** with **CQRS** enforced via package s
 - **Commands**: Mutate run state and artifacts (e.g., `LogResults`).
 - **Queries**: Materialize history and comparisons (e.g., `CompareRuns`).
 - **Ports**: Abstract storage (SQLite, Postgres) and artifact stores (FS, S3).
-
-## Architecture & Contributing Guidelines
-
-To maintain clean architectural boundaries, all contributions must follow these rules:
-
-- **The Adapter Rule**: If you are integrating a new third-party framework (e.g., LlamaIndex, LangChain), it goes in `identa-sdk/adapters/`. If you are adding a new internal domain concept, metric, or tracing algorithm, it goes in `identa-core`.
-- **The Import Rule**: Application code (end-users) should only import from `identa.sdk`. Internal tools (like `identa-cli`) are permitted to instantiate `identa.core` commands directly, provided they use the `sdk.api.execute()` bus for execution.
-- **Stateless Core**: Core handlers must be stateless. All dependencies (Storage, Exporters) must be injected via constructors. Core should never import from the SDK.
 
 ## License
 
