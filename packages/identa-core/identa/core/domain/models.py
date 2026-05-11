@@ -9,14 +9,6 @@ class RunStatus(str, Enum):
     FINISHED = "finished"
     FAILED = "failed"
 
-class DriftEvaluationMode(str, Enum):
-    STANDARD = "standard"
-    VANGUARD = "vanguard"
-    HYBRID = "hybrid"
-
-class EvaluationConfig(BaseModel):
-    drift_mode: DriftEvaluationMode = DriftEvaluationMode.STANDARD
-    # ... other config options ...
 
 class Workspace(BaseModel):
     id: str
