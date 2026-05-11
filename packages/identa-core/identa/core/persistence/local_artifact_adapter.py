@@ -20,10 +20,13 @@ class LocalArtifactAdapter(ArtifactPort):
         return artifact_id
 
     def get_artifact(self, artifact_id: str) -> Optional[BinaryIO]:
-        # This implementation requires searching for the artifact_id in the base_path
-        # A more efficient one would store the mapping in the database
+        # Search for the artifact by ID prefix in the base_path tree
         for root, dirs, files in os.walk(self.base_path):
             for file in files:
                 if file.startswith(artifact_id):
-                    return open(os.path.join(root, file), "rb")
+                    file_path = os.path.join(root, file)
+                    # Read into memory to avoid leaking file handles
+                    import io
+                    with open(file_path, "rb") as f:
+                        return io.BytesIO(f.read())
         return None
